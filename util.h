@@ -19,6 +19,10 @@
   exit(EXIT_FAILURE);\
 }while(0)
 
+struct buf {
+  char data[1024];
+};
+
 int bind_addr(const char *host, int port);
 int setnonblock(int fd);
 

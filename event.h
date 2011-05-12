@@ -3,10 +3,11 @@
 
 #define MAX_EVENT_TIMEOUT 500
 
+
 struct event {
   int fd;
-  int events;
-  int (*handler)(int fd, short events, void *);
+  uint32_t events;
+  int (*handler)(int fd, uint32_t events, void *);
   void *ctx;
 };
 
