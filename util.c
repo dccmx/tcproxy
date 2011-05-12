@@ -27,7 +27,11 @@ int bind_addr(const char *host, int port) {
   memset(&addr, 0, sizeof(struct sockaddr_in));
   addr.sin_family = PF_INET;
   addr.sin_port = htons(port);
-  inet_aton(host, &addr.sin_addr);
+  if (strcmp(host, "any") == 0) {
+    addr.sin_addr.s_addr = INADDR_ANY;
+  } else {
+    inet_aton(host, &addr.sin_addr);
+  }
 
   if (bind(fd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in)) == -1) {
     FATAL("bind");
