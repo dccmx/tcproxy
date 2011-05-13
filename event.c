@@ -30,9 +30,9 @@ int event_add(struct event *e) {
 }
 
 int event_del(struct event *e) {
+  epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
   close(e->fd);
   num_event--;
-  events = realloc(events, num_event * sizeof(struct epoll_event));
   return 0;
 }
 
@@ -40,8 +40,8 @@ int process_event() {
   int i, n;
   n = epoll_wait(epfd, events, num_event, MAX_EVENT_TIMEOUT);
   for(i = 0; i < n; i++) {
-    struct event *ev = events[i].data.ptr;
-    if (ev->handler(ev, events[i].events)) {
+    struct event *e = events[i].data.ptr;
+    if (e->handler(e, events[i].events)) {
       //kill tcp
     }
   }

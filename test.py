@@ -1,17 +1,30 @@
 #!/usr/bin/python
 import memcache
-import datetime
 import time
 import sys
+from threadpool import *
 
-if __name__=='__main__':
-    mc = memcache.Client(['127.0.0.1:'+sys.argv[1]], debug=0)
-    t1 = time.time()
-    for i in range(10000):
+def test(n):
+    mc = memcache.Client(['127.0.0.1:'+sys.argv[2]], debug=0)
+    for i in range(n):
         mc.set("foo","bar")
         value = mc.get("foo")
         if not value == "bar":
             print "error"
             break;
-    t2 = time.time()
-    print t2 - t1
+    return True
+
+if __name__=='__main__':
+    pool = ThreadPool(int(sys.argv[1]))
+    reqs = list()
+    for i in range(50):
+        reqs.append(200)
+    try:
+        t1 = time.time()
+        requests = makeRequests(test, reqs)
+        [pool.putRequest(req) for req in requests]
+        pool.wait()
+        t2 = time.time()
+        print t2 - t1
+    except:
+        pass

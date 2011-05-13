@@ -43,14 +43,13 @@ int rw_handler(struct event *e, uint32_t events) {
 int accept_handler(struct event *e, uint32_t events) {
   int  fd1, fd2;
   uint32_t size;
-  struct sockaddr_in caddr;
+  struct sockaddr_in addr;
 
-  tp_log("accept");
-
-  if ((fd1 = accept(e->fd, (struct sockaddr*)&caddr, &size)) != -1) {
+  if ((fd1 = accept(e->fd, (struct sockaddr*)&addr, &size)) != -1) {
     struct event *e1 = malloc(sizeof(struct event));
     struct event *e2 = malloc(sizeof(struct event));
-    struct rw_ctx *ctx = malloc(sizeof(struct rw_ctx));
+    struct rw_ctx *ctx1 = malloc(sizeof(struct rw_ctx));
+    struct rw_ctx *ctx2 = malloc(sizeof(struct rw_ctx));
     struct rwbuffer *buf1 = rwb_new(BUF_SIZE);
     struct rwbuffer *buf2 = rwb_new(BUF_SIZE);
 
@@ -58,22 +57,20 @@ int accept_handler(struct event *e, uint32_t events) {
       tp_log("connect failed: %s", strerror(errno));
     }
 
-    ctx->e = e2;
-    ctx->rbuf = buf1;
-    ctx->wbuf = buf2;
+    ctx1->e = e2;
+    ctx1->rbuf = buf1;
+    ctx1->wbuf = buf2;
     e1->fd = fd1;
-    e1->ctx = ctx;
+    e1->ctx = ctx1;
     e1->events = EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR;
     e1->handler = rw_handler;
     event_add(e1);
 
-    ctx = malloc(sizeof(struct rw_ctx));
-
-    ctx->e = e1;
-    ctx->rbuf = buf2;
-    ctx->wbuf = buf1;
+    ctx2->e = e1;
+    ctx2->rbuf = buf2;
+    ctx2->wbuf = buf1;
     e2->fd = fd2;
-    e2->ctx = ctx;
+    e2->ctx = ctx2;
     e2->events = EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR;
     e2->handler = rw_handler;
     event_add(e2);
@@ -84,17 +81,18 @@ int accept_handler(struct event *e, uint32_t events) {
 
 int main(int argc, char **argv) {
   int fd;
-  struct event *ev = malloc(sizeof(struct event));
+  struct event *e = malloc(sizeof(struct event));
 
   event_init();
 
   fd = bind_addr("any", 11212);
 
-  ev->handler = accept_handler;
-  ev->events = EPOLLIN | EPOLLHUP | EPOLLERR;
-  ev->fd = fd;
+  tp_log("lfd: %d", fd);
 
-  event_add(ev);
+  e->fd = fd;
+  e->events = EPOLLIN | EPOLLHUP | EPOLLERR;
+  e->handler = accept_handler;
+  event_add(e);
 
   while (1) {
     if (!process_event()) {
