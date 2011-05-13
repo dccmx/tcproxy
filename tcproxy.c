@@ -1,66 +1,81 @@
 #include "util.h"
 #include "event.h"
 
-
 struct rw_ctx {
-  int fd;
-  struct buf buf;
+  struct event *e;
+  struct rwbuffer *rbuf;
+  struct rwbuffer *wbuf;
 };
 
-struct conn_ctx {
-};
-
-
-int rw_handler(int fd, uint32_t e, void *ctx) {
-  return 0;
-}
-
-int connect_handler(int fd, uint32_t e, void *ctx) {
-  struct sockaddr_in addr;
-  struct event ev;
-
-  nfd = socket(PF_INET, SOCK_STREAM, 0);
-  addr.sin_family = PF_INET;
-  addr.sin_port = htons(58422);
-  inet_aton("", &addr.sin_addr);
-
-  if (connect(nfd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in)) == -1) {
-    if (errno != EINPROGRESS) {
-      FATAL("connect");
+int rw_handler(struct event *e, uint32_t events) {
+  int size;
+  struct rw_ctx *ctx = e->ctx;
+  if (events & EPOLLIN) {
+    if ((size = rwb_size_to_write(ctx->rbuf)) > 0) {
+      if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), size)) > 0) {
+        tp_log("read[%d : %d] ", e->fd, size);
+        rwb_write_size(ctx->rbuf, size);
+      } else if (size == 0) {
+        event_remove(e);
+        event_remove(ctx->e);
+      }
     }
   }
 
-  struct rw_ctx *nctx = malloc(sizeof(struct rw_ctx));
-  nctx->fd = (int)ctx;
-  ev.ctx = nctx;
-  ev.events = EPOLLIN | EPOLLOUT;
-  ev.fd = fd;
+  if (events & EPOLLOUT) {
+    if ((size = rwb_size_to_read(ctx->wbuf)) > 0) {
+      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), size)) > 0) {
+        tp_log("write[%d : %d] ", e->fd, size);
+        rwb_read_size(ctx->wbuf, size);
+      }
+    }
+  }
 
-  event_add(&ev);
-
-  struct rw_ctx *nctx = malloc(sizeof(struct rw_ctx));
-  nctx->fd = nfd;
-  ev.ctx = nctx;
-  ev.events = EPOLLIN | EPOLLOUT;
-  ev.fd = fd;
-  event_add(&ev);
+  if (events & (EPOLLHUP | EPOLLHUP)) {
+    tp_log("close[%d]", e->fd);
+    exit(0);
+  }
 
   return 0;
 }
 
-int accept_handler(int fd, uint32_t events, void *ctx) {
-  int  nfd;
+int accept_handler(struct event *e, uint32_t events) {
+  int  fd1, fd2;
   uint32_t size;
   struct sockaddr_in caddr;
-  struct event ev;
 
-  if ((nfd = accept(fd, (struct sockaddr*)&caddr, &size)) != -1) {
-    ev.handler = connect_handler;
-    ev.events = EPOLLIN | EPOLLOUT;
-    ev.fd = nfd;
-    ev.ctx = (void*)nfd;
+  tp_log("accept");
 
-    event_add(&ev);
+  if ((fd1 = accept(e->fd, (struct sockaddr*)&caddr, &size)) != -1) {
+    struct event *e1 = malloc(sizeof(struct event));
+    struct event *e2 = malloc(sizeof(struct event));
+    struct rw_ctx *ctx = malloc(sizeof(struct rw_ctx));
+    struct rwbuffer *buf1 = rwb_new(512);
+    struct rwbuffer *buf2 = rwb_new(512);
+
+    if ((fd2 = connect_addr("127.0.0.1", 11211)) == -1) {
+      tp_log("connect failed: %s", strerror(errno));
+    }
+
+    ctx->e = e2;
+    ctx->rbuf = buf1;
+    ctx->wbuf = buf2;
+    e1->fd = fd1;
+    e1->ctx = ctx;
+    e1->events = EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR;
+    e1->handler = rw_handler;
+    event_add(e1);
+
+    ctx = malloc(sizeof(struct rw_ctx));
+
+    ctx->e = e1;
+    ctx->rbuf = buf2;
+    ctx->wbuf = buf1;
+    e2->fd = fd2;
+    e2->ctx = ctx;
+    e2->events = EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR;
+    e2->handler = rw_handler;
+    event_add(e2);
   }
 
   return 0;
@@ -68,19 +83,22 @@ int accept_handler(int fd, uint32_t events, void *ctx) {
 
 int main(int argc, char **argv) {
   int fd;
-  struct event ev;
+  struct event *ev = malloc(sizeof(struct event));
 
-  fd = bind_addr("any", atoi(argv[1]));
+  event_init();
 
-  ev.handler = accept_handler;
-  ev.events = EPOLLIN;
-  ev.fd = fd;
+  fd = bind_addr("any", 11212);
 
-  event_add(&ev);
+  ev->handler = accept_handler;
+  ev->events = EPOLLIN | EPOLLHUP | EPOLLERR;
+  ev->fd = fd;
+
+  event_add(ev);
 
   while (1) {
     if (!process_event()) {
       //do house keeping
+      tp_log("no event");
     }
   }
 
