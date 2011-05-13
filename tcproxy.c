@@ -1,6 +1,8 @@
 #include "util.h"
 #include "event.h"
 
+#define BUF_SIZE 655350
+
 struct rw_ctx {
   struct event *e;
   struct rwbuffer *rbuf;
@@ -13,11 +15,10 @@ int rw_handler(struct event *e, uint32_t events) {
   if (events & EPOLLIN) {
     if ((size = rwb_size_to_write(ctx->rbuf)) > 0) {
       if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), size)) > 0) {
-        tp_log("read[%d : %d] ", e->fd, size);
         rwb_write_size(ctx->rbuf, size);
       } else if (size == 0) {
-        event_remove(e);
-        event_remove(ctx->e);
+        event_del(e);
+        event_del(ctx->e);
       }
     }
   }
@@ -25,15 +26,15 @@ int rw_handler(struct event *e, uint32_t events) {
   if (events & EPOLLOUT) {
     if ((size = rwb_size_to_read(ctx->wbuf)) > 0) {
       if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), size)) > 0) {
-        tp_log("write[%d : %d] ", e->fd, size);
         rwb_read_size(ctx->wbuf, size);
       }
     }
   }
 
   if (events & (EPOLLHUP | EPOLLHUP)) {
-    tp_log("close[%d]", e->fd);
-    exit(0);
+    tp_log("error[%d]", e->fd);
+    event_del(e);
+    event_del(ctx->e);
   }
 
   return 0;
@@ -50,8 +51,8 @@ int accept_handler(struct event *e, uint32_t events) {
     struct event *e1 = malloc(sizeof(struct event));
     struct event *e2 = malloc(sizeof(struct event));
     struct rw_ctx *ctx = malloc(sizeof(struct rw_ctx));
-    struct rwbuffer *buf1 = rwb_new(512);
-    struct rwbuffer *buf2 = rwb_new(512);
+    struct rwbuffer *buf1 = rwb_new(BUF_SIZE);
+    struct rwbuffer *buf2 = rwb_new(BUF_SIZE);
 
     if ((fd2 = connect_addr("127.0.0.1", 11211)) == -1) {
       tp_log("connect failed: %s", strerror(errno));

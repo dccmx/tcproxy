@@ -29,17 +29,7 @@ int event_add(struct event *e) {
   return 0;
 }
 
-int event_remove(struct event *e) {
-  /*
-  struct epoll_event ev;
-
-  ev.events = e->events;
-  ev.data.fd = e->fd;
-  ev.data.ptr = e;
-
-  epoll_ctl(epfd, EPOLL_CTL_ADD, e->fd, &ev);
-  */
-
+int event_del(struct event *e) {
   close(e->fd);
   num_event--;
   events = realloc(events, num_event * sizeof(struct epoll_event));

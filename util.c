@@ -73,39 +73,3 @@ int connect_addr(const char *host, short port) {
   return fd;
 }
 
-struct rwbuffer *rwb_new(size) {
-  struct rwbuffer *buf = malloc(sizeof(struct rwbuffer));
-  buf->data = malloc(size * sizeof(char));
-  buf->size = size;
-  buf->r = buf->w = 0;
-  return buf;
-}
-
-int rwb_size_to_read(struct rwbuffer *buf) {
-  if (buf->r <= buf->w) return buf->w - buf->r;
-  else return buf->size - buf->r;
-}
-
-int rwb_size_to_write(struct rwbuffer *buf) {
-  if (buf->r <= buf->w) return buf->size - buf->w;
-  else return buf->r - buf->w;
-}
-
-char *rwb_read_buf(struct rwbuffer *buf) {
-  return &buf->data[buf->r];
-}
-
-char *rwb_write_buf(struct rwbuffer *buf) {
-  return &buf->data[buf->w];
-}
-
-void rwb_read_size(struct rwbuffer *buf, int size) {
-  buf->r += size;
-  if (buf->r == buf->size) buf->r = 0;
-}
-
-void rwb_write_size(struct rwbuffer *buf, int size) {
-  buf->w += size;
-  if (buf->w == buf->size) buf->w = 0;
-}
-

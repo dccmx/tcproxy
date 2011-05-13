@@ -13,7 +13,7 @@ struct event {
 
 int event_init();
 int event_add(struct event *e);
-int event_remove(struct event *e);
+int event_del(struct event *e);
 int process_event();
 
 #endif /* _EVENT_H_ */

@@ -1,1 +1,3 @@
+cachegrind.out.*
+callgrind.out.*
 tcproxy

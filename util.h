@@ -28,21 +28,46 @@ struct rwbuffer {
   int r, w;
 };
 
+void tp_log(const char *fmt, ...);
+
 int bind_addr(const char *host, short port);
 int connect_addr(const char *host, short port);
 int setnonblock(int fd);
 
-struct rwbuffer *rwb_new(int size);
+static struct rwbuffer *rwb_new(size) {
+  struct rwbuffer *buf = malloc(sizeof(struct rwbuffer));
+  buf->data = malloc(size * sizeof(char));
+  buf->size = size;
+  buf->r = buf->w = 0;
+  return buf;
+}
 
-int rwb_size_to_read(struct rwbuffer *buf);
-int rwb_size_to_write(struct rwbuffer *buf);
+static int rwb_size_to_read(struct rwbuffer *buf) {
+  if (buf->r <= buf->w) return buf->w - buf->r;
+  else return buf->size - buf->r;
+}
 
-char *rwb_read_buf(struct rwbuffer *buf);
-char *rwb_write_buf(struct rwbuffer *buf);
+static int rwb_size_to_write(struct rwbuffer *buf) {
+  if (buf->r <= buf->w) return buf->size - buf->w;
+  else return buf->r - buf->w;
+}
 
-void rwb_read_size(struct rwbuffer *buf, int size);
-void rwb_write_size(struct rwbuffer *buf, int size);
+static char *rwb_read_buf(struct rwbuffer *buf) {
+  return &buf->data[buf->r];
+}
 
-void tp_log(const char *fmt, ...);
+static char *rwb_write_buf(struct rwbuffer *buf) {
+  return &buf->data[buf->w];
+}
+
+static void rwb_read_size(struct rwbuffer *buf, int size) {
+  buf->r += size;
+  if (buf->r == buf->size) buf->r = 0;
+}
+
+static void rwb_write_size(struct rwbuffer *buf, int size) {
+  buf->w += size;
+  if (buf->w == buf->size) buf->w = 0;
+}
 
 #endif /* _UTIL_H_ */
