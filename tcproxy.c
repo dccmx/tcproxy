@@ -11,14 +11,20 @@ struct rwctx {
 
 static struct rwctx *rwctx_pool = NULL;
 
-struct rwctx *rwctx_new() {
+static struct rwctx *rwctx_new() {
   struct rwctx *ctx = NULL;
   if (rwctx_pool) {
     LIST_POP(rwctx_pool, ctx);
   } else {
     ctx = malloc(sizeof(struct rwctx));
   }
+  ctx->rbuf = rwb_new();
   return ctx;
+}
+
+static void rwctx_del(struct rwctx *ctx) {
+  rwb_del(ctx->rbuf);
+  LIST_PREPEND(rwctx_pool, ctx);
 }
 
 int rw_handler(struct event *e, uint32_t events) {
@@ -32,6 +38,8 @@ int rw_handler(struct event *e, uint32_t events) {
       } else if (size == 0) {
         event_del(e);
         event_del(ctx->e);
+        rwctx_del(ctx);
+        rwctx_del(ctx->e->ctx);
         return -1;
       }
     }
@@ -54,6 +62,8 @@ int rw_handler(struct event *e, uint32_t events) {
     tp_log("error[%d]", e->fd);
     event_del(e);
     event_del(ctx->e);
+    rwctx_del(ctx);
+    rwctx_del(ctx->e->ctx);
     return -1;
   }
 
@@ -72,16 +82,13 @@ int accept_handler(struct event *e, uint32_t events) {
     struct event *e2 = event_new();
     struct rwctx *ctx1 = rwctx_new();
     struct rwctx *ctx2 = rwctx_new();
-    struct rwbuffer *buf1 = rwb_new();
-    struct rwbuffer *buf2 = rwb_new();
 
     if ((fd2 = connect_addr("127.0.0.1", 11211)) == -1) {
       tp_log("connect failed: %s", strerror(errno));
     }
 
     ctx1->e = e2;
-    ctx1->rbuf = buf1;
-    ctx1->wbuf = buf2;
+    ctx1->wbuf = ctx2->rbuf;
     e1->fd = fd1;
     e1->ctx = ctx1;
     e1->events = EPOLLIN | EPOLLHUP | EPOLLERR;
@@ -89,8 +96,7 @@ int accept_handler(struct event *e, uint32_t events) {
     event_add(e1);
 
     ctx2->e = e1;
-    ctx2->rbuf = buf2;
-    ctx2->wbuf = buf1;
+    ctx2->wbuf = ctx1->rbuf;
     e2->fd = fd2;
     e2->ctx = ctx2;
     e2->events = EPOLLIN | EPOLLHUP | EPOLLERR;

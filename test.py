@@ -10,7 +10,7 @@ def test(n):
         mc.set("foo","bar")
         value = mc.get("foo")
         if not value == "bar":
-            print "error"
+            print "error: ", value
             break;
     return True
 

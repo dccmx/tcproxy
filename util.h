@@ -64,6 +64,10 @@ static struct rwbuffer *rwb_new() {
   return buf;
 }
 
+static void rwb_del(struct rwbuffer *buf) {
+  LIST_PREPEND(rwbuffer_pool, buf);
+}
+
 static void rwb_update_size(struct rwbuffer *buf) {
   if (buf->r < buf->w) {
     buf->data_size = buf->w - buf->r;
