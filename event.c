@@ -2,12 +2,12 @@
 #include "event.h"
 
 static int epfd;
-static int num_event;
-static struct epoll_event *events;
+static int nev;
+static struct epoll_event *evs;
 
 int event_init() {
-  num_event = 0;
-  events = NULL;
+  nev = 0;
+  evs = NULL;
   epfd = epoll_create(256);
   return epfd;
 }
@@ -15,33 +15,42 @@ int event_init() {
 int event_add(struct event *e) {
   struct epoll_event ev;
 
-  setnonblock(e->fd);
-
   ev.events = e->events;
   ev.data.fd = e->fd;
   ev.data.ptr = e;
 
+  setnonblock(e->fd);
+
   epoll_ctl(epfd, EPOLL_CTL_ADD, e->fd, &ev);
 
-  num_event++;
-  events = realloc(events, num_event * sizeof(struct epoll_event));
+  nev++;
+  evs = realloc(evs, nev * sizeof(struct epoll_event));
 
   return 0;
 }
 
 int event_del(struct event *e) {
-  epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
   close(e->fd);
-  num_event--;
-  return 0;
+  nev--;
+  return epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
+}
+
+int event_mod(struct event *e, uint32_t events) {
+  struct epoll_event ev;
+
+  ev.events = events;
+  ev.data.fd = e->fd;
+  ev.data.ptr = e;
+
+  return epoll_ctl(epfd, EPOLL_CTL_MOD, e->fd, &ev);
 }
 
 int process_event() {
   int i, n;
-  n = epoll_wait(epfd, events, num_event, MAX_EVENT_TIMEOUT);
+  n = epoll_wait(epfd, evs, nev, MAX_EVENT_TIMEOUT);
   for(i = 0; i < n; i++) {
-    struct event *e = events[i].data.ptr;
-    if (e->handler(e, events[i].events)) {
+    struct event *e = evs[i].data.ptr;
+    if (e->handler(e, evs[i].events)) {
       //kill tcp
     }
   }

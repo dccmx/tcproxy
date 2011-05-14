@@ -16,6 +16,7 @@ int rw_handler(struct event *e, uint32_t events) {
     if ((size = rwb_size_to_write(ctx->rbuf)) > 0) {
       if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), size)) > 0) {
         rwb_write_size(ctx->rbuf, size);
+        event_mod(ctx->e, ctx->e->events | EPOLLOUT);
       } else if (size == 0) {
         event_del(e);
         event_del(ctx->e);
@@ -26,6 +27,9 @@ int rw_handler(struct event *e, uint32_t events) {
   if (events & EPOLLOUT) {
     if ((size = rwb_size_to_read(ctx->wbuf)) > 0) {
       if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), size)) > 0) {
+        if (size == rwb_size_to_read(ctx->wbuf)) {
+          event_mod(e, e->events);
+        }
         rwb_read_size(ctx->wbuf, size);
       }
     }
@@ -62,7 +66,7 @@ int accept_handler(struct event *e, uint32_t events) {
     ctx1->wbuf = buf2;
     e1->fd = fd1;
     e1->ctx = ctx1;
-    e1->events = EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR;
+    e1->events = EPOLLIN | EPOLLHUP | EPOLLERR;
     e1->handler = rw_handler;
     event_add(e1);
 
@@ -71,7 +75,7 @@ int accept_handler(struct event *e, uint32_t events) {
     ctx2->wbuf = buf1;
     e2->fd = fd2;
     e2->ctx = ctx2;
-    e2->events = EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLERR;
+    e2->events = EPOLLIN | EPOLLHUP | EPOLLERR;
     e2->handler = rw_handler;
     event_add(e2);
   }
