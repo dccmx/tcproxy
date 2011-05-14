@@ -1,37 +1,52 @@
 #include "util.h"
 #include "event.h"
 
-#define BUF_SIZE 655350
-
-struct rw_ctx {
+struct rwctx {
   struct event *e;
   struct rwbuffer *rbuf;
   struct rwbuffer *wbuf;
+  
+  struct rwctx *next;
 };
+
+static struct rwctx *rwctx_pool = NULL;
+
+struct rwctx *rwctx_new() {
+  struct rwctx *ctx = NULL;
+  if (rwctx_pool) {
+    LIST_POP(rwctx_pool, ctx);
+  } else {
+    ctx = malloc(sizeof(struct rwctx));
+  }
+  return ctx;
+}
 
 int rw_handler(struct event *e, uint32_t events) {
   int size;
-  struct rw_ctx *ctx = e->ctx;
+  struct rwctx *ctx = e->ctx;
   if (events & EPOLLIN) {
-    if ((size = rwb_size_to_write(ctx->rbuf)) > 0) {
-      if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), size)) > 0) {
-        rwb_write_size(ctx->rbuf, size);
+    if (ctx->rbuf->free_size > 0) {
+      if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), ctx->rbuf->free_size)) > 0) {
         event_mod(ctx->e, ctx->e->events | EPOLLOUT);
+        rwb_write_size(ctx->rbuf, size);
       } else if (size == 0) {
         event_del(e);
         event_del(ctx->e);
+        return -1;
       }
     }
   }
 
   if (events & EPOLLOUT) {
-    if ((size = rwb_size_to_read(ctx->wbuf)) > 0) {
-      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), size)) > 0) {
-        if (size == rwb_size_to_read(ctx->wbuf)) {
+    if (ctx->wbuf->data_size > 0) {
+      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
+        if (size == ctx->wbuf->data_size) {
           event_mod(e, e->events);
         }
         rwb_read_size(ctx->wbuf, size);
       }
+    } else {
+      event_mod(e, e->events);
     }
   }
 
@@ -39,6 +54,7 @@ int rw_handler(struct event *e, uint32_t events) {
     tp_log("error[%d]", e->fd);
     event_del(e);
     event_del(ctx->e);
+    return -1;
   }
 
   return 0;
@@ -46,16 +62,18 @@ int rw_handler(struct event *e, uint32_t events) {
 
 int accept_handler(struct event *e, uint32_t events) {
   int  fd1, fd2;
-  uint32_t size;
+  uint32_t size = 0;
   struct sockaddr_in addr;
 
+  memset(&addr, 0, sizeof(struct sockaddr_in));
+
   if ((fd1 = accept(e->fd, (struct sockaddr*)&addr, &size)) != -1) {
-    struct event *e1 = malloc(sizeof(struct event));
-    struct event *e2 = malloc(sizeof(struct event));
-    struct rw_ctx *ctx1 = malloc(sizeof(struct rw_ctx));
-    struct rw_ctx *ctx2 = malloc(sizeof(struct rw_ctx));
-    struct rwbuffer *buf1 = rwb_new(BUF_SIZE);
-    struct rwbuffer *buf2 = rwb_new(BUF_SIZE);
+    struct event *e1 = event_new();
+    struct event *e2 = event_new();
+    struct rwctx *ctx1 = rwctx_new();
+    struct rwctx *ctx2 = rwctx_new();
+    struct rwbuffer *buf1 = rwb_new();
+    struct rwbuffer *buf2 = rwb_new();
 
     if ((fd2 = connect_addr("127.0.0.1", 11211)) == -1) {
       tp_log("connect failed: %s", strerror(errno));
@@ -84,14 +102,12 @@ int accept_handler(struct event *e, uint32_t events) {
 }
 
 int main(int argc, char **argv) {
-  int fd;
+  int fd, i;
   struct event *e = malloc(sizeof(struct event));
 
   event_init();
 
   fd = bind_addr("any", 11212);
-
-  tp_log("lfd: %d", fd);
 
   e->fd = fd;
   e->events = EPOLLIN | EPOLLHUP | EPOLLERR;

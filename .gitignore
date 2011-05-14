@@ -1,4 +1,6 @@
 cachegrind.out.*
 callgrind.out.*
+massif.out.*
+memcheck.out
 tcproxy
 core

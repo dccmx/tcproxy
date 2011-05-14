@@ -8,8 +8,14 @@ run: tcproxy
 	rm -rf core.*
 	./tcproxy
 
-valgrind: tcproxy
-	valgrind --tool=callgrind ./tcproxy
+callgrind: tcproxy
+	valgrind --tool=callgrind --collect-systime=yes ./tcproxy
+
+massif: tcproxy
+	valgrind --tool=massif ./tcproxy
+
+memcheck: tcproxy
+	valgrind --leak-check=full --log-file=memcheck.out ./tcproxy
 
 clean:
 	rm -rf tcproxy core.*

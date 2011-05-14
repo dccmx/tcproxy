@@ -17,8 +17,8 @@ def test(n):
 if __name__=='__main__':
     pool = ThreadPool(int(sys.argv[1]))
     reqs = list()
-    for i in range(50):
-        reqs.append(200)
+    for i in range(int(sys.argv[1])):
+        reqs.append(100)
     try:
         t1 = time.time()
         requests = makeRequests(test, reqs)

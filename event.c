@@ -1,15 +1,30 @@
-#include "util.h"
 #include "event.h"
 
-static int epfd;
-static int nev;
-static struct epoll_event *evs;
+static int epfd = -1;
+static int nev = 0;
+static struct epoll_event *evs = NULL;
+
+static struct event *event_pool = NULL;
+
+static int sockbufsize = 32*1024;
 
 int event_init() {
   nev = 0;
   evs = NULL;
   epfd = epoll_create(256);
   return epfd;
+}
+
+struct event *event_new() {
+  struct event *e = NULL;
+
+  if (event_pool) {
+    LIST_POP(event_pool, e);
+  } else {
+    e = malloc(sizeof(struct event));
+  }
+
+  return e;
 }
 
 int event_add(struct event *e) {
@@ -20,10 +35,13 @@ int event_add(struct event *e) {
   ev.data.ptr = e;
 
   setnonblock(e->fd);
+  setsockopt(e->fd, SOL_SOCKET, SO_RCVBUF, &sockbufsize, sizeof(sockbufsize));
+  setsockopt(e->fd, SOL_SOCKET, SO_SNDBUF, &sockbufsize, sizeof(sockbufsize));
 
   epoll_ctl(epfd, EPOLL_CTL_ADD, e->fd, &ev);
 
   nev++;
+
   evs = realloc(evs, nev * sizeof(struct epoll_event));
 
   return 0;
@@ -32,6 +50,7 @@ int event_add(struct event *e) {
 int event_del(struct event *e) {
   close(e->fd);
   nev--;
+  LIST_PREPEND(event_pool, e);
   return epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
 }
 

@@ -22,34 +22,64 @@
   exit(EXIT_FAILURE);\
 }while(0)
 
+#define LIST_PREPEND(_head, _item) do {\
+  _item->next = _head;\
+  _head = _item;\
+}while(0)
+
+#define LIST_POP(_head, _item) do {\
+  _item = _head;\
+  _head = _head->next;\
+}while(0)
+
+#define RW_BUF_SIZE 32*1024
+
 struct rwbuffer {
-  char *data;
-  int size;
+  char data[RW_BUF_SIZE];
   int r, w;
+
+  short flip;
+
+  //cache the size
+  int data_size, free_size;
+
+  struct rwbuffer *next;
 };
 
-void tp_log(const char *fmt, ...);
+extern struct rwbuffer *rwbuffer_pool;
 
-int bind_addr(const char *host, short port);
-int connect_addr(const char *host, short port);
-int setnonblock(int fd);
+static struct rwbuffer *rwb_new() {
+  struct rwbuffer *buf = NULL;
 
-static struct rwbuffer *rwb_new(size) {
-  struct rwbuffer *buf = malloc(sizeof(struct rwbuffer));
-  buf->data = malloc(size * sizeof(char));
-  buf->size = size;
-  buf->r = buf->w = 0;
+  if (rwbuffer_pool) {
+    LIST_POP(rwbuffer_pool, buf);
+  } else {
+    buf = malloc(sizeof(struct rwbuffer));
+  }
+
+  buf->data_size = buf->r = buf->w = 0;
+  buf->flip = 0;
+  buf->free_size = RW_BUF_SIZE;
+
   return buf;
 }
 
-static int rwb_size_to_read(struct rwbuffer *buf) {
-  if (buf->r <= buf->w) return buf->w - buf->r;
-  else return buf->size - buf->r;
-}
-
-static int rwb_size_to_write(struct rwbuffer *buf) {
-  if (buf->r <= buf->w) return buf->size - buf->w;
-  else return buf->r - buf->w;
+static void rwb_update_size(struct rwbuffer *buf) {
+  if (buf->r < buf->w) {
+    buf->data_size = buf->w - buf->r;
+    buf->free_size = RW_BUF_SIZE - buf->w;
+  } else if (buf->r == buf->w) {
+    if (buf->flip) {
+      buf->data_size = RW_BUF_SIZE - buf->w;
+      buf->free_size = 0;
+    } else {
+      buf->data_size = 0;
+      buf->free_size = RW_BUF_SIZE - buf->r;
+    }
+  } else {
+    buf->data_size = RW_BUF_SIZE - buf->r;
+    buf->free_size = buf->r - buf->w;
+  }
 }
 
 static char *rwb_read_buf(struct rwbuffer *buf) {
@@ -62,12 +92,28 @@ static char *rwb_write_buf(struct rwbuffer *buf) {
 
 static void rwb_read_size(struct rwbuffer *buf, int size) {
   buf->r += size;
-  if (buf->r == buf->size) buf->r = 0;
+  if (buf->r == RW_BUF_SIZE) {
+    buf->r = 0;
+    buf->flip = 1 - buf->flip;
+  }
+  rwb_update_size(buf);
 }
 
 static void rwb_write_size(struct rwbuffer *buf, int size) {
   buf->w += size;
-  if (buf->w == buf->size) buf->w = 0;
+  if (buf->w == RW_BUF_SIZE) {
+    buf->w = 0;
+    buf->flip = 1 - buf->flip;
+  }
+  rwb_update_size(buf);
 }
+
+void tp_log(const char *fmt, ...);
+
+int bind_addr(const char *host, short port);
+
+int connect_addr(const char *host, short port);
+
+int setnonblock(int fd);
 
 #endif /* _UTIL_H_ */

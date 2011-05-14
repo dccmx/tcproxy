@@ -1,5 +1,7 @@
 #include "util.h"
 
+struct rwbuffer *rwbuffer_pool = NULL;
+
 void tp_log(const char *fmt, ...) { 
   va_list  args;
   
@@ -49,8 +51,6 @@ int bind_addr(const char *host, short port) {
   if (listen(fd, 10) == -1) {
     FATAL("listen");
   }
-
-  setnonblock(fd);
 
   return fd;
 }
