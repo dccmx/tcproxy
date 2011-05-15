@@ -61,6 +61,8 @@ static struct rwbuffer *rwb_new() {
   buf->flip = 0;
   buf->free_size = RW_BUF_SIZE;
 
+  buf->next = NULL;
+
   return buf;
 }
 

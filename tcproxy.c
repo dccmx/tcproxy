@@ -9,16 +9,23 @@ struct rwctx {
   struct rwctx *next;
 };
 
+//may have duplicate events
+static struct event *write_list = NULL;
+
 static struct rwctx *rwctx_pool = NULL;
 
 static struct rwctx *rwctx_new() {
   struct rwctx *ctx = NULL;
+
   if (rwctx_pool) {
     LIST_POP(rwctx_pool, ctx);
   } else {
     ctx = malloc(sizeof(struct rwctx));
   }
+
   ctx->rbuf = rwb_new();
+  ctx->next = NULL;
+
   return ctx;
 }
 
@@ -27,43 +34,61 @@ static void rwctx_del(struct rwctx *ctx) {
   LIST_PREPEND(rwctx_pool, ctx);
 }
 
+static void process_write() {
+  while (write_list) {
+    struct event *e = write_list, *pre = NULL, *h = write_list;
+    while (e) {
+      int size;
+      struct rwctx *ctx = e->ctx;
+
+      if (ctx->wbuf->data_size > 0) {
+        if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
+          rwb_read_size(ctx->wbuf, size);
+        } else {
+          tp_log("writ: %s\n", strerror(errno));
+        }
+      }
+
+      if (ctx->wbuf->data_size == 0) {
+        //remove e from write list
+        if (pre) pre->next = e->next;
+        else h = e->next;
+      }
+
+      pre = e;
+      e = e->next;
+    }
+    write_list = h;
+  }
+}
+
 int rw_handler(struct event *e, uint32_t events) {
   int size;
   struct rwctx *ctx = e->ctx;
   if (events & EPOLLIN) {
     if (ctx->rbuf->free_size > 0) {
       if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), ctx->rbuf->free_size)) > 0) {
-        event_mod(ctx->e, ctx->e->events | EPOLLOUT);
+        //event_mod(ctx->e, ctx->e->events | EPOLLOUT);
+        LIST_PREPEND(write_list, ctx->e);
         rwb_write_size(ctx->rbuf, size);
       } else if (size == 0) {
-        event_del(e);
-        event_del(ctx->e);
         rwctx_del(ctx);
         rwctx_del(ctx->e->ctx);
+        event_del(e);
+        event_del(ctx->e);
         return -1;
+      } else {
+        tp_log("read: %s\n", strerror(errno));
       }
-    }
-  }
-
-  if (events & EPOLLOUT) {
-    if (ctx->wbuf->data_size > 0) {
-      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
-        if (size == ctx->wbuf->data_size) {
-          event_mod(e, e->events);
-        }
-        rwb_read_size(ctx->wbuf, size);
-      }
-    } else {
-      event_mod(e, e->events);
     }
   }
 
   if (events & (EPOLLHUP | EPOLLHUP)) {
     tp_log("error[%d]", e->fd);
-    event_del(e);
-    event_del(ctx->e);
     rwctx_del(ctx);
     rwctx_del(ctx->e->ctx);
+    event_del(e);
+    event_del(ctx->e);
     return -1;
   }
 
@@ -121,10 +146,8 @@ int main(int argc, char **argv) {
   event_add(e);
 
   while (1) {
-    if (!process_event()) {
-      //do house keeping
-      tp_log("no event");
-    }
+    process_write();
+    process_event();
   }
 
   return 0;

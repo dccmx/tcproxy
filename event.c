@@ -24,6 +24,8 @@ struct event *event_new() {
     e = malloc(sizeof(struct event));
   }
 
+  e->next = NULL;
+
   return e;
 }
 
