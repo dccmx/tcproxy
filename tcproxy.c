@@ -16,7 +16,6 @@ static int daemonize = 0;
 
 static int stop = 0;
 
-//may have duplicate events
 static struct event *write_list = NULL;
 
 static struct rwctx *rwctx_pool = NULL;
@@ -42,12 +41,26 @@ static void rwctx_del(struct rwctx *ctx) {
 }
 
 static int process_write(struct event *fe) {
+  int size;
   struct event *e = write_list, *pre = NULL, *h = write_list;
+  struct rwctx *ctx;
 
+  if (fe) {
+    ctx = fe->ctx;
+    if (ctx->wbuf->data_size > 0) {
+      if ((size = write(fe->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
+        rwb_read_size(ctx->wbuf, size);
+        if (ctx->wbuf->data_size == 0) return 0;
+      } else {
+        tp_log("writ: %s\n", strerror(errno));
+      }
+    }
+  }
+
+  //find if in write list
   while (e) {
-    if (e == fe) return 1;
-    int size;
-    struct rwctx *ctx = e->ctx;
+
+    ctx = e->ctx;
 
     if (e->fd != -1 && ctx->wbuf->data_size > 0) {
       if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
@@ -63,23 +76,25 @@ static int process_write(struct event *fe) {
       else h = e->next;
     }
 
+    if (ctx->wbuf->data_size > 0 && e == fe) return 0;
+
     pre = e;
     e = e->next;
   }
 
   write_list = h;
-  return 0;
+  return 1;
 }
 
 int rw_handler(struct event *e, uint32_t events) {
   int size;
   struct rwctx *ctx = e->ctx;
+
   if (events & EPOLLIN) {
     if (ctx->rbuf->free_size > 0) {
       if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), ctx->rbuf->free_size)) > 0) {
-        //event_mod(ctx->e, ctx->e->events | EPOLLOUT);
         rwb_write_size(ctx->rbuf, size);
-        if (!process_write(ctx->e)) {
+        if (process_write(ctx->e)) {
           LIST_PREPEND(write_list, ctx->e);
         }
       } else if (size == 0) {
@@ -106,13 +121,17 @@ int rw_handler(struct event *e, uint32_t events) {
   return 0;
 }
 
+static int hash_sockaddr(struct sockaddr_in *addr) {
+  return addr->sin_addr.s_addr * addr->sin_port;
+}
+
 static struct hostent *get_host(struct sockaddr_in *addr) {
   struct hostent *host;
   if (policy.type == PROXY_RR) {
     host = &policy.hosts[policy.curhost];
     policy.curhost = (policy.curhost + 1) % policy.nhost;
   } else {
-    host = &policy.hosts[0];
+    host = &policy.hosts[hash_sockaddr(addr) % policy.nhost];
   }
 
   return host;

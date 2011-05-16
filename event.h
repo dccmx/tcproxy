@@ -19,6 +19,6 @@ struct event *event_new();
 int event_add(struct event *e);
 int event_del(struct event *e);
 int process_event();
-int event_deinit();
+void event_deinit();
 
 #endif /* _EVENT_H_ */

@@ -10,7 +10,7 @@ VERSION    = 0.1
 OBJFILES   = event.c util.c policy.c
 INCFILES   = event.h util.h policy.h
 
-CFLAGS_GEN = -Wall -funsigned-char $(CFLAGS) -DVERSION=\"$(VERSION)\"
+CFLAGS_GEN = -Wall -g -funsigned-char $(CFLAGS) -DVERSION=\"$(VERSION)\"
 CFLAGS_DBG = -g -ggdb $(CFLAGS_GEN)
 CFLAGS_OPT = -O3 -Wno-format $(CFLAGS_GEN)
 

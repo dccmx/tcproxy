@@ -57,16 +57,6 @@ int event_del(struct event *e) {
   return epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
 }
 
-int event_mod(struct event *e, uint32_t events) {
-  struct epoll_event ev;
-
-  ev.events = events;
-  ev.data.fd = e->fd;
-  ev.data.ptr = e;
-
-  return epoll_ctl(epfd, EPOLL_CTL_MOD, e->fd, &ev);
-}
-
 int process_event() {
   int i, n;
   n = epoll_wait(epfd, evs, nev, MAX_EVENT_TIMEOUT);
@@ -79,7 +69,12 @@ int process_event() {
   return n;
 }
 
-int event_deinit() {
-  return 0;
+void event_deinit() {
+  struct event *e = event_pool;
+  while (e) {
+    event_pool = e->next;
+    free(e);
+    e = event_pool;
+  }
 }
 
