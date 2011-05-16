@@ -2,11 +2,13 @@
 #include "event.h"
 #include "policy.h"
 
+#define MAX_EVENT_TIMEOUT 100
+
 struct rwctx {
   struct event *e;
   struct rwbuffer *rbuf;
   struct rwbuffer *wbuf;
-  
+
   struct rwctx *next;
 };
 
@@ -38,6 +40,15 @@ static struct rwctx *rwctx_new() {
 static void rwctx_del(struct rwctx *ctx) {
   rwb_del(ctx->rbuf);
   LIST_PREPEND(rwctx_pool, ctx);
+}
+
+static void rwctx_del_all() {
+  struct rwctx *r = rwctx_pool;
+  while (r) {
+    rwctx_pool = r->next;
+    free(r);
+    r = rwctx_pool;
+  }
 }
 
 static int process_write(struct event *fe) {
@@ -76,13 +87,15 @@ static int process_write(struct event *fe) {
       else h = e->next;
     }
 
-    if (ctx->wbuf->data_size > 0 && e == fe) return 0;
+    if (e == fe && ctx->wbuf->data_size > 0) return 0;
 
     pre = e;
     e = e->next;
   }
 
   write_list = h;
+
+  //ok add to write list
   return 1;
 }
 
@@ -205,7 +218,7 @@ void int_handler(int signo) {
 
 int main(int argc, char **argv) {
   int fd;
-  struct event *e = malloc(sizeof(struct event));
+  struct event *e = event_new();
   struct sigaction int_action;
 
   parse_args(argc, argv);
@@ -231,8 +244,14 @@ int main(int argc, char **argv) {
 
   while (!stop) {
     process_write(NULL);
-    process_event();
+    process_event(MAX_EVENT_TIMEOUT);
   }
+
+  event_del(e);
+
+  event_del_all();
+  rwb_del_all();
+  rwctx_del_all();
 
   return 0;
 }

@@ -68,6 +68,15 @@ void rwb_write_size(struct rwbuffer *buf, int size) {
   rwb_update_size(buf);
 }
 
+void rwb_del_all() {
+  struct rwbuffer *r = rwbuffer_pool;
+  while (r) {
+    rwbuffer_pool = r->next;
+    free(r);
+    r = rwbuffer_pool;
+  }
+}
+
 void tp_log(const char *fmt, ...) { 
   va_list  args;
   

@@ -50,10 +50,14 @@ struct rwbuffer {
 
 struct rwbuffer *rwb_new();
 void rwb_del(struct rwbuffer *buf);
+
 char *rwb_read_buf(struct rwbuffer *buf);
 char *rwb_write_buf(struct rwbuffer *buf);
+
 void rwb_read_size(struct rwbuffer *buf, int size);
 void rwb_write_size(struct rwbuffer *buf, int size);
+
+void rwb_del_all();
 
 void tp_log(const char *fmt, ...);
 

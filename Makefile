@@ -37,13 +37,13 @@ run: $(PROGNAME)
 	rm -rf core.*
 	./$(PROGNAME) ":11212->:11211"
 
-callgrind: $(PROGNAME)
+callgrind: debug
 	valgrind --tool=callgrind --collect-systime=yes ./$(PROGNAME) ":11212->:11211"
 
-massif: $(PROGNAME)
+massif: debug
 	valgrind --tool=massif ./$(PROGNAME) ":11212->:11211"
 
-memcheck: $(PROGNAME)
+memcheck: debug
 	valgrind --leak-check=full --log-file=memcheck.out ./$(PROGNAME) ":11212->:11211"
 
 clean:

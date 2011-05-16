@@ -3,8 +3,6 @@
 
 #include "util.h"
 
-#define MAX_EVENT_TIMEOUT 100
-
 struct event {
   int fd;
   uint32_t events;
@@ -15,10 +13,11 @@ struct event {
 };
 
 int event_init();
-struct event *event_new();
 int event_add(struct event *e);
 int event_del(struct event *e);
-int process_event();
-void event_deinit();
+int process_event(int tv);
+
+struct event *event_new();
+void event_del_all();
 
 #endif /* _EVENT_H_ */

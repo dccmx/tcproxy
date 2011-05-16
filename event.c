@@ -57,9 +57,9 @@ int event_del(struct event *e) {
   return epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
 }
 
-int process_event() {
+int process_event(int tv) {
   int i, n;
-  n = epoll_wait(epfd, evs, nev, MAX_EVENT_TIMEOUT);
+  n = epoll_wait(epfd, evs, nev, tv);
   for(i = 0; i < n; i++) {
     struct event *e = evs[i].data.ptr;
     if (e->handler(e, evs[i].events)) {
@@ -69,7 +69,7 @@ int process_event() {
   return n;
 }
 
-void event_deinit() {
+void event_del_all() {
   struct event *e = event_pool;
   while (e) {
     event_pool = e->next;
