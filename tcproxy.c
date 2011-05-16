@@ -1,5 +1,6 @@
 #include "util.h"
 #include "event.h"
+#include "policy.h"
 
 struct rwctx {
   struct event *e;
@@ -8,6 +9,10 @@ struct rwctx {
   
   struct rwctx *next;
 };
+
+static struct policy policy;
+
+static int daemonize = 0;
 
 //may have duplicate events
 static struct event *write_list = NULL;
@@ -95,6 +100,18 @@ int rw_handler(struct event *e, uint32_t events) {
   return 0;
 }
 
+static struct hostent *get_host(struct sockaddr_in *addr) {
+  struct hostent *host;
+  if (policy.type == PROXY_RR) {
+    host = &policy.hosts[policy.curhost];
+    policy.curhost = (policy.curhost + 1) % policy.nhost;
+  } else {
+    host = &policy.hosts[0];
+  }
+
+  return host;
+}
+
 int accept_handler(struct event *e, uint32_t events) {
   int  fd1, fd2;
   uint32_t size = 0;
@@ -108,7 +125,9 @@ int accept_handler(struct event *e, uint32_t events) {
     struct rwctx *ctx1 = rwctx_new();
     struct rwctx *ctx2 = rwctx_new();
 
-    if ((fd2 = connect_addr("127.0.0.1", 11211)) == -1) {
+    struct hostent *host = get_host(&addr);
+
+    if ((fd2 = connect_addr(host->addr, host->port)) == -1) {
       tp_log("connect failed: %s", strerror(errno));
     }
 
@@ -132,13 +151,43 @@ int accept_handler(struct event *e, uint32_t events) {
   return 0;
 }
 
+void usage() {
+  printf("tcproxy: a small tcp proxy\n\n");
+  exit(EXIT_SUCCESS);
+}
+
+void parse_args(int argc, char **argv) {
+  int i;
+
+  policy_init(&policy);
+
+  for (i = 1; i < argc; i++) {
+    if (argv[i][0] == '-') {
+      if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+        usage();
+      } else if (!strcmp(argv[i], "-d")) {
+        daemonize = 1;
+      }
+    } else if (policy_parse(&policy, argv[i])) {
+      usage();
+    }
+  }
+}
+
 int main(int argc, char **argv) {
-  int fd, i;
+  int fd;
   struct event *e = malloc(sizeof(struct event));
+
+  parse_args(argc, argv);
+
+  if (daemonize && daemon(1, 1)) {
+    perror("daemonize error");
+    exit(EXIT_FAILURE);
+  }
 
   event_init();
 
-  fd = bind_addr("any", 11212);
+  fd = bind_addr(policy.listen.addr, policy.listen.port);
 
   e->fd = fd;
   e->events = EPOLLIN | EPOLLHUP | EPOLLERR;

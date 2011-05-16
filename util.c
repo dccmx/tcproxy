@@ -2,6 +2,72 @@
 
 struct rwbuffer *rwbuffer_pool = NULL;
 
+struct rwbuffer *rwb_new() {
+  struct rwbuffer *buf = NULL;
+
+  if (rwbuffer_pool) {
+    LIST_POP(rwbuffer_pool, buf);
+  } else {
+    buf = malloc(sizeof(struct rwbuffer));
+  }
+
+  buf->data_size = buf->r = buf->w = 0;
+  buf->flip = 0;
+  buf->free_size = RW_BUF_SIZE;
+
+  buf->next = NULL;
+
+  return buf;
+}
+
+void rwb_del(struct rwbuffer *buf) {
+  LIST_PREPEND(rwbuffer_pool, buf);
+}
+
+void rwb_update_size(struct rwbuffer *buf) {
+  if (buf->r < buf->w) {
+    buf->data_size = buf->w - buf->r;
+    buf->free_size = RW_BUF_SIZE - buf->w;
+  } else if (buf->r == buf->w) {
+    if (buf->flip) {
+      buf->data_size = RW_BUF_SIZE - buf->w;
+      buf->free_size = 0;
+    } else {
+      buf->data_size = 0;
+      buf->free_size = RW_BUF_SIZE - buf->r;
+    }
+  } else {
+    buf->data_size = RW_BUF_SIZE - buf->r;
+    buf->free_size = buf->r - buf->w;
+  }
+}
+
+char *rwb_read_buf(struct rwbuffer *buf) {
+  return &buf->data[buf->r];
+}
+
+char *rwb_write_buf(struct rwbuffer *buf) {
+  return &buf->data[buf->w];
+}
+
+void rwb_read_size(struct rwbuffer *buf, int size) {
+  buf->r += size;
+  if (buf->r == RW_BUF_SIZE) {
+    buf->r = 0;
+    buf->flip = 1 - buf->flip;
+  }
+  rwb_update_size(buf);
+}
+
+void rwb_write_size(struct rwbuffer *buf, int size) {
+  buf->w += size;
+  if (buf->w == RW_BUF_SIZE) {
+    buf->w = 0;
+    buf->flip = 1 - buf->flip;
+  }
+  rwb_update_size(buf);
+}
+
 void tp_log(const char *fmt, ...) { 
   va_list  args;
   
@@ -62,7 +128,11 @@ int connect_addr(const char *host, short port) {
   fd = socket(PF_INET, SOCK_STREAM, 0);
   addr.sin_family = PF_INET;
   addr.sin_port = htons(port);
-  inet_aton(host, &addr.sin_addr);
+  if (host[0] == '\0' || !strcmp(host, "any")) {
+    addr.sin_addr.s_addr = INADDR_ANY;
+  } else {
+    inet_aton(host, &addr.sin_addr);
+  }
 
   if (connect(fd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in)) == -1) {
     if (errno != EINPROGRESS) {

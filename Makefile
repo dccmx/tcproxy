@@ -1,21 +1,56 @@
-tcproxy: tcproxy.c event.c util.c event.h util.h
-	gcc -o tcproxy -g -ggdb tcproxy.c event.c util.c
+#
+# tcproxy - Makefile
+#
+# Author: dccmx <dccmx@dccmx.com>
+#
 
-opt: tcproxy.c event.c util.c event.h util.h
-	gcc -O3 -o tcproxy -g tcproxy.c event.c util.c
+PROGNAME   = tcproxy
+VERSION    = 0.1
 
-run: tcproxy
+OBJFILES   = event.c util.c policy.c
+INCFILES   = event.h util.h policy.h
+
+CFLAGS_GEN = -Wall -funsigned-char $(CFLAGS) -DVERSION=\"$(VERSION)\"
+CFLAGS_DBG = -g -ggdb $(CFLAGS_GEN)
+CFLAGS_OPT = -O3 -Wno-format $(CFLAGS_GEN)
+
+LDFLAGS   += 
+LIBS      += 
+
+all: $(PROGNAME)
+
+$(PROGNAME): $(PROGNAME).c $(OBJFILES) $(INCFILES)
+	$(CC) $(LDFLAGS) $(PROGNAME).c -o $(PROGNAME) $(CFLAGS_OPT) $(OBJFILES) $(LIBS)
+	@echo
+	@echo "See README for how to use."
+	@echo
+	@echo "Having problems with it? Send complains to dccmx@dccmx.com"
+	@echo
+
+debug: $(PROGNAME).c $(OBJFILES) $(INCFILES)
+	$(CC) $(LDFLAGS) $(PROGNAME).c -o $(PROGNAME) $(CFLAGS_DBG) $(OBJFILES) $(LIBS)
+
+install: $(PROGNAME)
+	cp ./$(PROGNAME) /usr/local/bin/
+
+run: $(PROGNAME)
 	rm -rf core.*
-	./tcproxy
+	./$(PROGNAME) ":11212 -> :11211"
 
-callgrind: tcproxy
-	valgrind --tool=callgrind --collect-systime=yes ./tcproxy
+callgrind: $(PROGNAME)
+	valgrind --tool=callgrind --collect-systime=yes ./$(PROGNAME)
 
-massif: tcproxy
-	valgrind --tool=massif ./tcproxy
+massif: $(PROGNAME)
+	valgrind --tool=massif ./$(PROGNAME)
 
-memcheck: tcproxy
-	valgrind --leak-check=full --log-file=memcheck.out ./tcproxy
+memcheck: $(PROGNAME)
+	valgrind --leak-check=full --log-file=memcheck.out ./$(PROGNAME)
 
 clean:
-	rm -rf tcproxy core.*
+	rm -f $(PROGNAME) core core.[1-9][0-9]* memcheck.out callgrind.out.* massif.out.*
+
+dist: clean
+	cd ..; rm -rf $(PROGNAME)-$(VERSION); cp -pr $(PROGNAME) $(PROGNAME)-$(VERSION); \
+	  tar cfvz ./$(PROGNAME)-$(VERSION).tar.gz $(PROGNAME)-$(VERSION)
+	cd ..; rm -rf $(PROGNAME)-$(VERSION); chmod 644 ./$(PROGNAME)-$(VERSION).tar.gz
+
