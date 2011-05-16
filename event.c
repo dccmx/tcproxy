@@ -51,6 +51,7 @@ int event_add(struct event *e) {
 
 int event_del(struct event *e) {
   close(e->fd);
+  e->fd = -1;
   nev--;
   LIST_PREPEND(event_pool, e);
   return epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
@@ -79,5 +80,6 @@ int process_event() {
 }
 
 int event_deinit() {
+  return 0;
 }
 

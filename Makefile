@@ -35,16 +35,16 @@ install: $(PROGNAME)
 
 run: $(PROGNAME)
 	rm -rf core.*
-	./$(PROGNAME) ":11212 -> :11211"
+	./$(PROGNAME) ":11212->:11211"
 
 callgrind: $(PROGNAME)
-	valgrind --tool=callgrind --collect-systime=yes ./$(PROGNAME)
+	valgrind --tool=callgrind --collect-systime=yes ./$(PROGNAME) ":11212->:11211"
 
 massif: $(PROGNAME)
-	valgrind --tool=massif ./$(PROGNAME)
+	valgrind --tool=massif ./$(PROGNAME) ":11212->:11211"
 
 memcheck: $(PROGNAME)
-	valgrind --leak-check=full --log-file=memcheck.out ./$(PROGNAME)
+	valgrind --leak-check=full --log-file=memcheck.out ./$(PROGNAME) ":11212->:11211"
 
 clean:
 	rm -f $(PROGNAME) core core.[1-9][0-9]* memcheck.out callgrind.out.* massif.out.*

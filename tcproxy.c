@@ -41,13 +41,15 @@ static void rwctx_del(struct rwctx *ctx) {
   LIST_PREPEND(rwctx_pool, ctx);
 }
 
-static void process_write() {
+static int process_write(struct event *fe) {
   struct event *e = write_list, *pre = NULL, *h = write_list;
+
   while (e) {
+    if (e == fe) return 1;
     int size;
     struct rwctx *ctx = e->ctx;
 
-    if (ctx->wbuf->data_size > 0) {
+    if (e->fd != -1 && ctx->wbuf->data_size > 0) {
       if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
         rwb_read_size(ctx->wbuf, size);
       } else {
@@ -55,7 +57,7 @@ static void process_write() {
       }
     }
 
-    if (ctx->wbuf->data_size == 0) {
+    if (e->fd == -1 || ctx->wbuf->data_size == 0) {
       //remove e from write list
       if (pre) pre->next = e->next;
       else h = e->next;
@@ -64,7 +66,9 @@ static void process_write() {
     pre = e;
     e = e->next;
   }
+
   write_list = h;
+  return 0;
 }
 
 int rw_handler(struct event *e, uint32_t events) {
@@ -74,8 +78,10 @@ int rw_handler(struct event *e, uint32_t events) {
     if (ctx->rbuf->free_size > 0) {
       if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), ctx->rbuf->free_size)) > 0) {
         //event_mod(ctx->e, ctx->e->events | EPOLLOUT);
-        LIST_PREPEND(write_list, ctx->e);
         rwb_write_size(ctx->rbuf, size);
+        if (!process_write(ctx->e)) {
+          LIST_PREPEND(write_list, ctx->e);
+        }
       } else if (size == 0) {
         rwctx_del(ctx);
         rwctx_del(ctx->e->ctx);
@@ -205,7 +211,7 @@ int main(int argc, char **argv) {
   event_add(e);
 
   while (!stop) {
-    process_write();
+    process_write(NULL);
     process_event();
   }
 

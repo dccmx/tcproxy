@@ -3,7 +3,7 @@
 
 #include "util.h"
 
-#define MAX_EVENT_TIMEOUT 10
+#define MAX_EVENT_TIMEOUT 100
 
 struct event {
   int fd;
