@@ -190,7 +190,14 @@ int accept_handler(struct event *e, uint32_t events) {
 }
 
 void usage() {
-  printf("tcproxy: a small tcp proxy\n\n");
+  printf("tcproxy "VERSION"\n"
+      "usage:\n"
+      "  tcproxy [-d] \"proxy policy\"\n"
+      "  -d run in background\n\n"
+      "examples:\n"
+      "  tcproxy \":11212 -> :11211\"\n"
+      "  tcproxy \"127.0.0.1:11212 -> rr{192.168.0.100:11211 192.168.0.101:11211}\"\n"
+      );
   exit(EXIT_SUCCESS);
 }
 
