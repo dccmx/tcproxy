@@ -78,3 +78,6 @@ int process_event() {
   return n;
 }
 
+int event_deinit() {
+}
+

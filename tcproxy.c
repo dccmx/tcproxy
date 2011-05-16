@@ -14,6 +14,8 @@ static struct policy policy;
 
 static int daemonize = 0;
 
+static int stop = 0;
+
 //may have duplicate events
 static struct event *write_list = NULL;
 
@@ -174,9 +176,14 @@ void parse_args(int argc, char **argv) {
   }
 }
 
+void int_handler(int signo) {
+  stop = 1;
+}
+
 int main(int argc, char **argv) {
   int fd;
   struct event *e = malloc(sizeof(struct event));
+  struct sigaction int_action;
 
   parse_args(argc, argv);
 
@@ -184,6 +191,11 @@ int main(int argc, char **argv) {
     perror("daemonize error");
     exit(EXIT_FAILURE);
   }
+
+  int_action.sa_handler = int_handler;
+  int_action.sa_flags = SA_RESTART;
+  sigemptyset(&int_action.sa_mask);
+  sigaction(SIGINT, &int_action, NULL);
 
   event_init();
 
@@ -194,7 +206,7 @@ int main(int argc, char **argv) {
   e->handler = accept_handler;
   event_add(e);
 
-  while (1) {
+  while (!stop) {
     process_write();
     process_event();
   }
