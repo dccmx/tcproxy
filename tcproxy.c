@@ -42,31 +42,29 @@ static void rwctx_del(struct rwctx *ctx) {
 }
 
 static void process_write() {
-  while (write_list) {
-    struct event *e = write_list, *pre = NULL, *h = write_list;
-    while (e) {
-      int size;
-      struct rwctx *ctx = e->ctx;
+  struct event *e = write_list, *pre = NULL, *h = write_list;
+  while (e) {
+    int size;
+    struct rwctx *ctx = e->ctx;
 
-      if (ctx->wbuf->data_size > 0) {
-        if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
-          rwb_read_size(ctx->wbuf, size);
-        } else {
-          tp_log("writ: %s\n", strerror(errno));
-        }
+    if (ctx->wbuf->data_size > 0) {
+      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
+        rwb_read_size(ctx->wbuf, size);
+      } else {
+        tp_log("writ: %s\n", strerror(errno));
       }
-
-      if (ctx->wbuf->data_size == 0) {
-        //remove e from write list
-        if (pre) pre->next = e->next;
-        else h = e->next;
-      }
-
-      pre = e;
-      e = e->next;
     }
-    write_list = h;
+
+    if (ctx->wbuf->data_size == 0) {
+      //remove e from write list
+      if (pre) pre->next = e->next;
+      else h = e->next;
+    }
+
+    pre = e;
+    e = e->next;
   }
+  write_list = h;
 }
 
 int rw_handler(struct event *e, uint32_t events) {
