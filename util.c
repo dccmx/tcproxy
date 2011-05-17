@@ -132,7 +132,9 @@ int connect_addr(const char *host, short port) {
   fd = socket(PF_INET, SOCK_STREAM, 0);
   addr.sin_family = PF_INET;
   addr.sin_port = htons(port);
-  if (host[0] == '\0' || !strcmp(host, "any")) {
+  if (host[0] == '\0') {
+    inet_aton("127.0.0.1", &addr.sin_addr);
+  } else if (!strcmp(host, "any")) {
     addr.sin_addr.s_addr = INADDR_ANY;
   } else {
     inet_aton(host, &addr.sin_addr);
