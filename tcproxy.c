@@ -115,7 +115,7 @@ int rw_handler(struct event *e, uint32_t events) {
         rwctx_del(ctx->e->ctx);
         event_del(e);
         event_del(ctx->e);
-        return -1;
+        return 0;
       } else {
         tp_log("read: %s\n", strerror(errno));
       }
@@ -128,7 +128,7 @@ int rw_handler(struct event *e, uint32_t events) {
     rwctx_del(ctx->e->ctx);
     event_del(e);
     event_del(ctx->e);
-    return -1;
+    return 0;
   }
 
   return 0;
@@ -167,6 +167,8 @@ int accept_handler(struct event *e, uint32_t events) {
 
     if ((fd2 = connect_addr(host->addr, host->port)) == -1) {
       tp_log("connect failed: %s", strerror(errno));
+      //do failover stuff
+      return 0;
     }
 
     ctx1->e = e2;
@@ -193,7 +195,7 @@ void usage() {
   printf("tcproxy "VERSION"\n"
       "usage:\n"
       "  tcproxy [-d] \"proxy policy\"\n"
-      "  -d run in background\n\n"
+      "  -d: run in background\n\n"
       "examples:\n"
       "  tcproxy \":11212 -> :11211\"\n"
       "  tcproxy \"127.0.0.1:11212 -> rr{192.168.0.100:11211 192.168.0.101:11211}\"\n"
