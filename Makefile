@@ -5,7 +5,7 @@
 #
 
 PROGNAME   = tcproxy
-VERSION    = 0.1
+VERSION    = 0.1.1
 
 OBJFILES   = event.c util.c policy.c
 INCFILES   = event.h util.h policy.h
