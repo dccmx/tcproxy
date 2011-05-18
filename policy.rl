@@ -72,7 +72,7 @@ static int addr_p;
 %% write data;
 
 static void parse_error(const char* msg, const char *p) {
-  printf("%s around \"%s\"\n", msg, p);
+  printf("%s: around \"%s\"\n", msg, p);
 }
 
 int policy_parse(struct policy *policy, const char *p) {

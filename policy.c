@@ -173,7 +173,7 @@ static const int policy_parser_en_main = 1;
 #line 73 "policy.rl"
 
 static void parse_error(const char* msg, const char *p) {
-  printf("%s around \"%s\"\n", msg, p);
+  printf("%s: around \"%s\"\n", msg, p);
 }
 
 int policy_parse(struct policy *policy, const char *p) {

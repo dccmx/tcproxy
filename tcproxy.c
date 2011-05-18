@@ -242,7 +242,7 @@ void parse_args(int argc, char **argv) {
           exit(EXIT_FAILURE);
         }
       } else {
-        printf("unknow option %s\n", argv[i]);
+        printf("error: unknow option %s\n", argv[i]);
         exit(EXIT_FAILURE);
       }
     } else {
@@ -251,7 +251,7 @@ void parse_args(int argc, char **argv) {
   }
 
   if (ret) {
-    printf("policy not valid\n");
+    printf("error: policy not valid\n");
     exit(EXIT_FAILURE);
   }
 }
@@ -264,8 +264,6 @@ int main(int argc, char **argv) {
   int fd;
   struct event *e;
   struct sigaction int_action;
-
-  update_time();
 
   parse_args(argc, argv);
 
@@ -293,7 +291,6 @@ int main(int argc, char **argv) {
   while (!stop) {
     process_write(NULL);
     process_event(MAX_EVENT_TIMEOUT);
-    update_time();
   }
 
   fclose(logfile);

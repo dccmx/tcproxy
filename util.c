@@ -89,16 +89,22 @@ void rwb_free_all() {
 }
 
 void update_time() {
-  time(&now);
+  time_t t = time(NULL);
+
+  //update time every second
+  if (t - now < 60) return;
+
   struct tm tm;
   localtime_r(&now, &tm);
-  sprintf(now_str, "%04d/%02d/%02d %02d:%02d:%02d", 
+  sprintf(now_str, "%04d/%02d/%02d %02d:%02d", 
       1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday, 
-      tm.tm_hour, tm.tm_min, tm.tm_sec);
+      tm.tm_hour, tm.tm_min);
 }
 
 void log_err(int level, const char *msg, const char *fmt, ...) { 
   va_list  args;
+
+  update_time();
   
   fprintf(logfile, "%s [%s] %s: ", now_str, log_str[level], msg);
   va_start(args, fmt);
