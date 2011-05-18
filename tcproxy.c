@@ -293,6 +293,8 @@ int main(int argc, char **argv) {
     update_time();
   }
 
+  fclose(logfile);
+
   event_del(e);
 
   event_del_all();
