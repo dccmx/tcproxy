@@ -44,7 +44,7 @@ static void rwctx_del(struct rwctx *ctx) {
   LIST_PREPEND(rwctx_pool, ctx);
 }
 
-static void rwctx_del_all() {
+static void rwctx_free_all() {
   struct rwctx *r = rwctx_pool;
   while (r) {
     rwctx_pool = r->next;
@@ -297,9 +297,9 @@ int main(int argc, char **argv) {
 
   event_del(e);
 
-  event_del_all();
-  rwb_del_all();
-  rwctx_del_all();
+  event_free_all();
+  rwb_free_all();
+  rwctx_free_all();
 
   return 0;
 }

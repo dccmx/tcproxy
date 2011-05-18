@@ -79,7 +79,7 @@ void rwb_commit_write(struct rwbuffer *buf, int size) {
   rwb_update_size(buf);
 }
 
-void rwb_del_all() {
+void rwb_free_all() {
   struct rwbuffer *r = rwbuffer_pool;
   while (r) {
     rwbuffer_pool = r->next;

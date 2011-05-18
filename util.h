@@ -62,7 +62,7 @@ char *rwb_write_buf(struct rwbuffer *buf);
 void rwb_commit_read(struct rwbuffer *buf, int size);
 void rwb_commit_write(struct rwbuffer *buf, int size);
 
-void rwb_del_all();
+void rwb_free_all();
 
 void update_time();
 

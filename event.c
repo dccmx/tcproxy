@@ -69,7 +69,7 @@ int process_event(int tv) {
   return n;
 }
 
-void event_del_all() {
+void event_free_all() {
   struct event *e = event_pool;
   while (e) {
     event_pool = e->next;

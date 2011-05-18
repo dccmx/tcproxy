@@ -18,6 +18,6 @@ int event_del(struct event *e);
 int process_event(int tv);
 
 struct event *event_new();
-void event_del_all();
+void event_free_all();
 
 #endif /* _EVENT_H_ */
