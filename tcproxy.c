@@ -4,6 +4,8 @@
 
 #define MAX_EVENT_TIMEOUT 100
 
+extern FILE *logfile;
+
 struct rwctx {
   struct event *e;
   struct rwbuffer *rbuf;
@@ -63,7 +65,7 @@ static int process_write(struct event *fe) {
         rwb_read_size(ctx->wbuf, size);
         if (ctx->wbuf->data_size == 0) return 0;
       } else {
-        tp_log("writ: %s\n", strerror(errno));
+        log_err(LOG_ERROR, "write", "%s", strerror(errno));
       }
     }
   }
@@ -77,7 +79,7 @@ static int process_write(struct event *fe) {
       if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
         rwb_read_size(ctx->wbuf, size);
       } else {
-        tp_log("writ: %s\n", strerror(errno));
+        log_err(LOG_ERROR, "write fd", "%s", strerror(errno));
       }
     }
 
@@ -117,13 +119,13 @@ int rw_handler(struct event *e, uint32_t events) {
         event_del(ctx->e);
         return 0;
       } else {
-        tp_log("read: %s\n", strerror(errno));
+        log_err(LOG_ERROR, "read fd", "%s", strerror(errno));
       }
     }
   }
 
   if (events & (EPOLLHUP | EPOLLHUP)) {
-    tp_log("error[%d]", e->fd);
+    log_err(LOG_ERROR, "socket hangup", "fd(%d)", e->fd);
     rwctx_del(ctx);
     rwctx_del(ctx->e->ctx);
     event_del(e);
@@ -166,7 +168,7 @@ int accept_handler(struct event *e, uint32_t events) {
     struct hostent *host = get_host(&addr);
 
     if ((fd2 = connect_addr(host->addr, host->port)) == -1) {
-      tp_log("connect failed: %s", strerror(errno));
+      log_err(LOG_ERROR, "connect remote host", "%s", strerror(errno));
       //do failover stuff
       return 0;
     }
@@ -195,7 +197,9 @@ void usage() {
   printf("tcproxy "VERSION"\n"
       "usage:\n"
       "  tcproxy [-d] \"proxy policy\"\n"
-      "  -d: run in background\n\n"
+      "  -l file    specify log file\n"
+      "  -d         run in background\n"
+      "  -h         show help and exit\n\n"
       "examples:\n"
       "  tcproxy \":11212 -> :11211\"\n"
       "  tcproxy \"127.0.0.1:11212 -> rr{192.168.0.100:11211 192.168.0.101:11211}\"\n"
@@ -204,9 +208,11 @@ void usage() {
 }
 
 void parse_args(int argc, char **argv) {
-  int i;
+  int i, ret = -1;
 
   policy_init(&policy);
+
+  logfile = stderr;
 
   for (i = 1; i < argc; i++) {
     if (argv[i][0] == '-') {
@@ -214,11 +220,26 @@ void parse_args(int argc, char **argv) {
         usage();
       } else if (!strcmp(argv[i], "-d")) {
         daemonize = 1;
+      } else if (!strcmp(argv[i], "-l")) {
+        if ((++i >= argc) || (logfile = fopen(argv[i], "a+")) == NULL) {
+          logfile = stderr;
+          log_err(LOG_ERROR, "openning log file", "%s", strerror(errno));
+          exit(EXIT_FAILURE);
+        }
+      } else {
+        printf("unknow option %s\n", argv[i]);
+        exit(EXIT_FAILURE);
       }
-    } else if (policy_parse(&policy, argv[i])) {
-      usage();
+    } else {
+      ret = policy_parse(&policy, argv[i]);
     }
   }
+
+  if (ret) {
+    printf("policy not valid\n");
+    exit(EXIT_FAILURE);
+  }
+
 }
 
 void int_handler(int signo) {
@@ -230,10 +251,12 @@ int main(int argc, char **argv) {
   struct event *e = event_new();
   struct sigaction int_action;
 
+  update_time();
+
   parse_args(argc, argv);
 
   if (daemonize && daemon(1, 1)) {
-    perror("daemonize error");
+    log_err(LOG_ERROR, "daemonize", "%s", strerror(errno));
     exit(EXIT_FAILURE);
   }
 
@@ -254,6 +277,7 @@ int main(int argc, char **argv) {
   while (!stop) {
     process_write(NULL);
     process_event(MAX_EVENT_TIMEOUT);
+    update_time();
   }
 
   event_del(e);

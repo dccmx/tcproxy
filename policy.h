@@ -1,6 +1,8 @@
 #ifndef _POLICY_H_
 #define _POLICY_H_
 
+#include "util.h"
+
 #define PROXY_RR 0
 #define PROXY_HASH 1
 

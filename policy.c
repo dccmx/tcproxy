@@ -173,7 +173,7 @@ static const int policy_parser_en_main = 1;
 #line 73 "policy.rl"
 
 static void parse_error(const char* msg, const char *p) {
-  printf("[%s] \"%s\"\n", msg, p);
+  printf("%s around \"%s\"\n", msg, p);
 }
 
 int policy_parse(struct policy *policy, const char *p) {
@@ -360,22 +360,12 @@ _again:
 0
 #line 85 "policy.rl"
 ) {
-    printf("error %d of %d\n", policy->cs, 
-#line 365 "policy.c"
-0
-#line 86 "policy.rl"
-);
     return -1;
   } else if (policy ->cs < 
-#line 371 "policy.c"
+#line 366 "policy.c"
 73
-#line 88 "policy.rl"
+#line 87 "policy.rl"
 ) {
-    printf("not finish %d of %d\n", policy->cs, 
-#line 376 "policy.c"
-73
-#line 89 "policy.rl"
-);
     return 1;
   }
 
@@ -385,12 +375,12 @@ _again:
 int policy_init(struct policy *policy) {
   memset(policy, 0, sizeof(struct policy));
   
-#line 389 "policy.c"
+#line 379 "policy.c"
 	{
 	 policy->cs = policy_parser_start;
 	}
 
-#line 99 "policy.rl"
+#line 97 "policy.rl"
   return 0;
 }
 

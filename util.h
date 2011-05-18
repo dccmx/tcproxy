@@ -35,6 +35,11 @@
 
 #define RW_BUF_SIZE 32*1024
 
+#define LOG_FATAL 0
+#define LOG_ERROR 1
+#define LOG_NOTICE 2
+#define LOG_DEBUG 3
+
 struct rwbuffer {
   char data[RW_BUF_SIZE];
   int r, w;
@@ -59,7 +64,9 @@ void rwb_write_size(struct rwbuffer *buf, int size);
 
 void rwb_del_all();
 
-void tp_log(const char *fmt, ...);
+void update_time();
+
+void log_err(int level, const char *msg, const char *fmt, ...);
 
 int bind_addr(const char *host, short port);
 

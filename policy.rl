@@ -72,7 +72,7 @@ static int addr_p;
 %% write data;
 
 static void parse_error(const char* msg, const char *p) {
-  printf("[%s] \"%s\"\n", msg, p);
+  printf("%s around \"%s\"\n", msg, p);
 }
 
 int policy_parse(struct policy *policy, const char *p) {
@@ -83,10 +83,8 @@ int policy_parse(struct policy *policy, const char *p) {
   %% write exec;
 
   if (policy->cs == %%{write error;}%%) {
-    printf("error %d of %d\n", policy->cs, %%{write error;}%%);
     return -1;
   } else if (policy ->cs < %%{write first_final;}%%) {
-    printf("not finish %d of %d\n", policy->cs, %%{write first_final;}%%);
     return 1;
   }
 

@@ -1,5 +1,16 @@
 #include "util.h"
 
+static time_t now;
+static char now_str[sizeof("2011/05/18 10:26:21")];
+FILE *logfile;
+
+static const char *log_str[] = {
+  "FATAL",
+  "ERROR",
+  "NOTICE",
+  "DEBUG"
+};
+
 struct rwbuffer *rwbuffer_pool = NULL;
 
 struct rwbuffer *rwb_new() {
@@ -77,12 +88,22 @@ void rwb_del_all() {
   }
 }
 
-void tp_log(const char *fmt, ...) { 
+void update_time() {
+  now = time(NULL);
+  struct tm tm;
+  localtime_r(&now, &tm);
+  sprintf(now_str, "%04d/%02d/%02d %02d:%02d:%02d", 
+      1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday, 
+      tm.tm_hour, tm.tm_min, tm.tm_sec);
+}
+
+void log_err(int level, const char *msg, const char *fmt, ...) { 
   va_list  args;
   
+  fprintf(logfile, "%s [%s] %s: ", now_str, log_str[level], msg);
   va_start(args, fmt);
-  vfprintf(stderr, fmt, args);
-  fprintf(stderr, "\n");
+  vfprintf(logfile, fmt, args);
+  fprintf(logfile, "\n");
   va_end(args);
 }
 
