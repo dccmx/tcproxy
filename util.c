@@ -1,5 +1,7 @@
 #include "util.h"
 
+#define RWBUF_POOL_MAX 1000
+
 static time_t now;
 static char now_str[sizeof("2011/05/18 10:26:21")];
 FILE *logfile;
@@ -11,13 +13,15 @@ static const char *log_str[] = {
   "DEBUG"
 };
 
-struct rwbuffer *rwbuffer_pool = NULL;
+static struct rwbuffer *rwbuffer_pool = NULL;
+static int rwbuffer_pool_size = 0;
 
 struct rwbuffer *rwb_new() {
   struct rwbuffer *buf = NULL;
 
   if (rwbuffer_pool) {
     LIST_POP(rwbuffer_pool, buf);
+    rwbuffer_pool_size--;
   } else {
     buf = malloc(sizeof(struct rwbuffer));
   }
@@ -32,7 +36,10 @@ struct rwbuffer *rwb_new() {
 }
 
 void rwb_del(struct rwbuffer *buf) {
-  LIST_PREPEND(rwbuffer_pool, buf);
+  if (rwbuffer_pool_size < RWBUF_POOL_MAX) {
+    LIST_PREPEND(rwbuffer_pool, buf);
+    rwbuffer_pool_size++;
+  }
 }
 
 void rwb_update_size(struct rwbuffer *buf) {

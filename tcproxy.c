@@ -2,7 +2,8 @@
 #include "event.h"
 #include "policy.h"
 
-#define MAX_EVENT_TIMEOUT 100
+#define EVENT_TIMEOUT_MAX 100
+#define RWCTX_POOL_MAX 1000
 
 extern FILE *logfile;
 
@@ -23,12 +24,14 @@ static int stop = 0;
 static struct event *write_list = NULL;
 
 static struct rwctx *rwctx_pool = NULL;
+static int rwctx_pool_size = 0;
 
 static struct rwctx *rwctx_new() {
   struct rwctx *ctx = NULL;
 
   if (rwctx_pool) {
     LIST_POP(rwctx_pool, ctx);
+    rwctx_pool_size--;
   } else {
     ctx = malloc(sizeof(struct rwctx));
   }
@@ -41,7 +44,10 @@ static struct rwctx *rwctx_new() {
 
 static void rwctx_del(struct rwctx *ctx) {
   rwb_del(ctx->rbuf);
-  LIST_PREPEND(rwctx_pool, ctx);
+  if (rwctx_pool_size < RWCTX_POOL_MAX) {
+    LIST_PREPEND(rwctx_pool, ctx);
+    rwctx_pool_size++;
+  }
 }
 
 static void rwctx_free_all() {
@@ -161,46 +167,51 @@ int accept_handler(struct event *e, uint32_t events) {
   int  fd1, fd2;
   uint32_t size = 0;
   struct sockaddr_in addr;
+  struct rwctx *ctx1, *ctx2;
+  struct hostent *host;
 
   memset(&addr, 0, sizeof(struct sockaddr_in));
 
-  if ((fd1 = accept(e->fd, (struct sockaddr*)&addr, &size)) != -1) {
-    struct rwctx *ctx1 = rwctx_new();
-    struct rwctx *ctx2 = rwctx_new();
-
-    struct hostent *host = get_host(&addr);
-
-    if ((fd2 = connect_addr(host->addr, host->port)) == -1) {
-      log_err(LOG_ERROR, "connect remote host", "(%s) %s", host->addr, strerror(errno));
-      //TODO failover stuff
-      return 0;
-    }
-
-    ctx1->wbuf = ctx2->rbuf;
-    if ((ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx1)) == NULL) {
-      log_err(LOG_ERROR, "event add", "no mem");
-      goto err;
-    }
-
-    ctx2->wbuf = ctx1->rbuf;
-    if ((ctx1->e = event_new_add(fd2, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx2)) == NULL) {
-      log_err(LOG_ERROR, "event add", "no mem");
-      event_del(ctx2->e);
-      goto err;
-    }
-
-    return 0;
-
-err:
-    close(fd1);
-    close(fd2);
-    rwctx_del(ctx1);
-    rwctx_del(ctx2);
-    return -1;
-  } else {
+  fd1 = accept(e->fd, (struct sockaddr*)&addr, &size);
+  if (fd1 == -1) {
     log_err(LOG_ERROR, "accept new connection", "%s", strerror(errno));
+    return -1;
   }
 
+  ctx1 = rwctx_new();
+  ctx2 = rwctx_new();
+
+  host = get_host(&addr);
+
+  fd2 = connect_addr(host->addr, host->port);
+  if (fd2 == -1) {
+    log_err(LOG_ERROR, "connect remote host", "(%s) %s", host->addr, strerror(errno));
+    //TODO failover stuff
+    return 0;
+  }
+
+  ctx1->wbuf = ctx2->rbuf;
+  ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx1);
+  if (ctx2->e == NULL) {
+    log_err(LOG_ERROR, "add event", "no memory");
+    goto err;
+  }
+
+  ctx2->wbuf = ctx1->rbuf;
+  ctx1->e = event_new_add(fd2, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx2);
+  if (ctx1->e == NULL) {
+    log_err(LOG_ERROR, "add event", "no memory");
+    event_del(ctx2->e);
+    goto err;
+  }
+
+  return 0;
+
+err:
+  close(fd1);
+  close(fd2);
+  rwctx_del(ctx1);
+  rwctx_del(ctx2);
   return -1;
 }
 
@@ -236,14 +247,13 @@ void parse_args(int argc, char **argv) {
       } else if (!strcmp(argv[i], "-d")) {
         daemonize = 1;
       } else if (!strcmp(argv[i], "-l")) {
-        if ((++i >= argc) || (logfile = fopen(argv[i], "a+")) == NULL) {
+        if (++i >= argc) print_fatal("file name must be specified");
+        if ((logfile = fopen(argv[i], "a+")) == NULL) {
           logfile = stderr;
           log_err(LOG_ERROR, "openning log file", "%s", strerror(errno));
-          exit(EXIT_FAILURE);
         }
       } else {
-        printf("error: unknow option %s\n", argv[i]);
-        exit(EXIT_FAILURE);
+        print_fatal("unknow option %s\n", argv[i]);
       }
     } else {
       ret = policy_parse(&policy, argv[i]);
@@ -251,8 +261,7 @@ void parse_args(int argc, char **argv) {
   }
 
   if (ret) {
-    printf("error: policy not valid\n");
-    exit(EXIT_FAILURE);
+    print_fatal("policy not valid");
   }
 }
 
@@ -279,21 +288,17 @@ int main(int argc, char **argv) {
   event_init();
 
   if ((fd = bind_addr(policy.listen.addr, policy.listen.port)) == -1) {
-    log_err(LOG_ERROR, "binding address", "%s", strerror(errno));
-    exit(EXIT_FAILURE);
+    log_fatal("binding address", "%s", strerror(errno));
   }
 
   if ((e = event_new_add(fd, EPOLLIN | EPOLLHUP | EPOLLERR, accept_handler, NULL)) == NULL) {
-    log_err(LOG_ERROR, "add accept event", "no memory");
-    exit(EXIT_FAILURE);
+    log_fatal("add accept event", "no memory");
   }
 
   while (!stop) {
     process_write(NULL);
-    process_event(MAX_EVENT_TIMEOUT);
+    process_event(EVENT_TIMEOUT_MAX);
   }
-
-  fclose(logfile);
 
   event_del(e);
 

@@ -172,17 +172,13 @@ static const int policy_parser_en_main = 1;
 
 #line 73 "policy.rl"
 
-static void parse_error(const char* msg, const char *p) {
-  printf("%s: around \"%s\"\n", msg, p);
-}
-
 int policy_parse(struct policy *policy, const char *p) {
   policy->p = p;
   policy->pe = p + strlen(p);
   policy->eof = policy->pe;
 
   
-#line 186 "policy.c"
+#line 182 "policy.c"
 	{
 	int _klen;
 	unsigned int _trans;
@@ -312,10 +308,10 @@ _match:
 	case 8:
 #line 54 "policy.rl"
 	{
-    parse_error("error", ( policy->p));
+    print_fatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
-#line 319 "policy.c"
+#line 315 "policy.c"
 		}
 	}
 
@@ -342,10 +338,10 @@ _again:
 	case 8:
 #line 54 "policy.rl"
 	{
-    parse_error("error", ( policy->p));
+    print_fatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
-#line 349 "policy.c"
+#line 345 "policy.c"
 		}
 	}
 	}
@@ -353,18 +349,18 @@ _again:
 	_out: {}
 	}
 
-#line 84 "policy.rl"
+#line 80 "policy.rl"
 
   if (policy->cs == 
-#line 360 "policy.c"
+#line 356 "policy.c"
 0
-#line 85 "policy.rl"
+#line 81 "policy.rl"
 ) {
     return -1;
   } else if (policy ->cs < 
-#line 366 "policy.c"
+#line 362 "policy.c"
 73
-#line 87 "policy.rl"
+#line 83 "policy.rl"
 ) {
     return 1;
   }
@@ -375,12 +371,12 @@ _again:
 int policy_init(struct policy *policy) {
   memset(policy, 0, sizeof(struct policy));
   
-#line 379 "policy.c"
+#line 375 "policy.c"
 	{
 	 policy->cs = policy_parser_start;
 	}
 
-#line 97 "policy.rl"
+#line 93 "policy.rl"
   return 0;
 }
 

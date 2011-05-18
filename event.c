@@ -1,10 +1,13 @@
 #include "event.h"
 
+#define EVENT_POOL_MAX 1000
+
 static int epfd = -1;
 static int nev = 0;
 static struct epoll_event *evs = NULL;
 
 static struct event *event_pool = NULL;
+static int event_pool_size = 0;
 
 static int sockbufsize = 32*1024;
 
@@ -20,6 +23,7 @@ struct event *event_new() {
 
   if (event_pool) {
     LIST_POP(event_pool, e);
+    event_pool_size--;
   } else {
     e = malloc(sizeof(struct event));
   }
@@ -64,7 +68,10 @@ int event_del(struct event *e) {
   close(e->fd);
   e->fd = -1;
   nev--;
-  LIST_PREPEND(event_pool, e);
+  if (event_pool_size < EVENT_POOL_MAX) {
+    LIST_PREPEND(event_pool, e);
+    event_pool_size++;
+  }
   return epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
 }
 

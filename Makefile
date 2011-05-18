@@ -5,7 +5,7 @@
 #
 
 PROGNAME   = tcproxy
-VERSION    = 0.1.1
+VERSION    = 0.1.2
 
 OBJFILES   = event.c util.c policy.c
 INCFILES   = event.h util.h policy.h
@@ -22,16 +22,13 @@ all: $(PROGNAME)
 $(PROGNAME): $(PROGNAME).c $(OBJFILES) $(INCFILES)
 	$(CC) $(LDFLAGS) $(PROGNAME).c -o $(PROGNAME) $(CFLAGS_OPT) $(OBJFILES) $(LIBS)
 	@echo
-	@echo "Done! See README for how to use."
+	@echo "Make Complete. See README for how to use."
 	@echo
 	@echo "Having problems with it? Send complains and bugs to dccmx@dccmx.com"
 	@echo
 
 debug: $(PROGNAME).c $(OBJFILES) $(INCFILES)
 	$(CC) $(LDFLAGS) $(PROGNAME).c -o $(PROGNAME) $(CFLAGS_DBG) $(OBJFILES) $(LIBS)
-
-install: $(PROGNAME)
-	cp ./$(PROGNAME) /usr/local/bin/
 
 clean:
 	rm -f $(PROGNAME) core core.[1-9][0-9]* memcheck.out callgrind.out.[1-9][0-9]* massif.out.[1-9][0-9]*

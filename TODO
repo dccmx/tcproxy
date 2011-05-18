@@ -1,4 +1,4 @@
 fail over
 tcp pool
-pool limit
 thread
+too many open files
