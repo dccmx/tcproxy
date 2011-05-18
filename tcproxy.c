@@ -194,15 +194,16 @@ int accept_handler(struct event *e, uint32_t events) {
 }
 
 void usage() {
-  printf("tcproxy "VERSION"\n"
-      "usage:\n"
-      "  tcproxy [-d] \"proxy policy\"\n"
+  printf("usage:\n"
+      "  tcproxy [options] \"proxy policy\"\n"
+      "options:\n"
       "  -l file    specify log file\n"
       "  -d         run in background\n"
-      "  -h         show help and exit\n\n"
+      "  -v         show version and exit\n"
+      "  -h         show help and exit\n"
       "examples:\n"
       "  tcproxy \":11212 -> :11211\"\n"
-      "  tcproxy \"127.0.0.1:11212 -> rr{192.168.0.100:11211 192.168.0.101:11211}\"\n"
+      "  tcproxy \"127.0.0.1:11212 -> rr{192.168.0.100:11211 192.168.0.101:11211}\"\n\n"
       );
   exit(EXIT_SUCCESS);
 }
@@ -218,6 +219,9 @@ void parse_args(int argc, char **argv) {
     if (argv[i][0] == '-') {
       if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
         usage();
+      } else if (!strcmp(argv[i], "-v")) {
+        printf("tcproxy "VERSION"\n\n");
+        exit(EXIT_SUCCESS);
       } else if (!strcmp(argv[i], "-d")) {
         daemonize = 1;
       } else if (!strcmp(argv[i], "-l")) {
