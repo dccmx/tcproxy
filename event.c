@@ -49,6 +49,17 @@ int event_add(struct event *e) {
   return 0;
 }
 
+struct event *event_new_add(int fd, uint32_t events, event_handler handler, void *ctx) {
+  struct event *e = event_new();
+  if (!e) return NULL;
+  e->fd = fd;
+  e->ctx = ctx;
+  e->events = events;
+  e->handler = handler;
+  event_add(e);
+  return e;
+}
+
 int event_del(struct event *e) {
   close(e->fd);
   e->fd = -1;

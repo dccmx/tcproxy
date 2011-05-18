@@ -73,7 +73,7 @@ static int process_write(struct event *fe) {
     }
   }
 
-  //find if in write list
+  //find if already in write list
   while (e) {
 
     ctx = e->ctx;
@@ -81,11 +81,9 @@ static int process_write(struct event *fe) {
     if (e->fd != -1 && ctx->wbuf->data_size > 0) {
       if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) >= 0) {
         rwb_commit_read(ctx->wbuf, size);
-      } else {
-        if (errno != EAGAIN && errno != EINTR) {
-          log_err(LOG_ERROR, "write", "%s", strerror(errno));
-          //TODO failover stuff
-        }
+      } else if (errno != EAGAIN && errno != EINTR) {
+        log_err(LOG_ERROR, "write", "%s", strerror(errno));
+        //TODO failover stuff
       }
     }
 
@@ -124,11 +122,9 @@ int rw_handler(struct event *e, uint32_t events) {
         event_del(e);
         event_del(ctx->e);
         return 0;
-      } else {
-        if (errno != EAGAIN && errno != EINTR) {
-          log_err(LOG_ERROR, "read", "%s", strerror(errno));
-          //TODO failover stuff
-        }
+      } else if (errno != EAGAIN && errno != EINTR) {
+        log_err(LOG_ERROR, "read", "%s", strerror(errno));
+        //TODO failover stuff
       }
     }
   }
@@ -169,37 +165,43 @@ int accept_handler(struct event *e, uint32_t events) {
   memset(&addr, 0, sizeof(struct sockaddr_in));
 
   if ((fd1 = accept(e->fd, (struct sockaddr*)&addr, &size)) != -1) {
-    struct event *e1 = event_new();
-    struct event *e2 = event_new();
     struct rwctx *ctx1 = rwctx_new();
     struct rwctx *ctx2 = rwctx_new();
 
     struct hostent *host = get_host(&addr);
 
     if ((fd2 = connect_addr(host->addr, host->port)) == -1) {
-      log_err(LOG_ERROR, "connect remote host", "%s", strerror(errno));
-      //do failover stuff
+      log_err(LOG_ERROR, "connect remote host", "(%s) %s", host->addr, strerror(errno));
+      //TODO failover stuff
       return 0;
     }
 
-    ctx1->e = e2;
     ctx1->wbuf = ctx2->rbuf;
-    e1->fd = fd1;
-    e1->ctx = ctx1;
-    e1->events = EPOLLIN | EPOLLHUP | EPOLLERR;
-    e1->handler = rw_handler;
-    event_add(e1);
+    if ((ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx1)) == NULL) {
+      log_err(LOG_ERROR, "event add", "no mem");
+      goto err;
+    }
 
-    ctx2->e = e1;
     ctx2->wbuf = ctx1->rbuf;
-    e2->fd = fd2;
-    e2->ctx = ctx2;
-    e2->events = EPOLLIN | EPOLLHUP | EPOLLERR;
-    e2->handler = rw_handler;
-    event_add(e2);
+    if ((ctx1->e = event_new_add(fd2, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx2)) == NULL) {
+      log_err(LOG_ERROR, "event add", "no mem");
+      event_del(ctx2->e);
+      goto err;
+    }
+
+    return 0;
+
+err:
+    close(fd1);
+    close(fd2);
+    rwctx_del(ctx1);
+    rwctx_del(ctx2);
+    return -1;
+  } else {
+    log_err(LOG_ERROR, "accept new connection", "%s", strerror(errno));
   }
 
-  return 0;
+  return -1;
 }
 
 void usage() {
@@ -252,7 +254,6 @@ void parse_args(int argc, char **argv) {
     printf("policy not valid\n");
     exit(EXIT_FAILURE);
   }
-
 }
 
 void int_handler(int signo) {
@@ -261,7 +262,7 @@ void int_handler(int signo) {
 
 int main(int argc, char **argv) {
   int fd;
-  struct event *e = event_new();
+  struct event *e;
   struct sigaction int_action;
 
   update_time();
@@ -270,7 +271,6 @@ int main(int argc, char **argv) {
 
   if (daemonize && daemon(1, 1)) {
     log_err(LOG_ERROR, "daemonize", "%s", strerror(errno));
-    exit(EXIT_FAILURE);
   }
 
   int_action.sa_handler = int_handler;
@@ -280,12 +280,15 @@ int main(int argc, char **argv) {
 
   event_init();
 
-  fd = bind_addr(policy.listen.addr, policy.listen.port);
+  if ((fd = bind_addr(policy.listen.addr, policy.listen.port)) == -1) {
+    log_err(LOG_ERROR, "binding address", "%s", strerror(errno));
+    exit(EXIT_FAILURE);
+  }
 
-  e->fd = fd;
-  e->events = EPOLLIN | EPOLLHUP | EPOLLERR;
-  e->handler = accept_handler;
-  event_add(e);
+  if ((e = event_new_add(fd, EPOLLIN | EPOLLHUP | EPOLLERR, accept_handler, NULL)) == NULL) {
+    log_err(LOG_ERROR, "add accept event", "no memory");
+    exit(EXIT_FAILURE);
+  }
 
   while (!stop) {
     process_write(NULL);
@@ -301,6 +304,6 @@ int main(int argc, char **argv) {
   rwb_free_all();
   rwctx_free_all();
 
-  return 0;
+  exit(EXIT_SUCCESS);
 }
 
