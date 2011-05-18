@@ -61,7 +61,7 @@ char *rwb_write_buf(struct rwbuffer *buf) {
   return &buf->data[buf->w];
 }
 
-void rwb_read_size(struct rwbuffer *buf, int size) {
+void rwb_commit_read(struct rwbuffer *buf, int size) {
   buf->r += size;
   if (buf->r == RW_BUF_SIZE) {
     buf->r = 0;
@@ -70,7 +70,7 @@ void rwb_read_size(struct rwbuffer *buf, int size) {
   rwb_update_size(buf);
 }
 
-void rwb_write_size(struct rwbuffer *buf, int size) {
+void rwb_commit_write(struct rwbuffer *buf, int size) {
   buf->w += size;
   if (buf->w == RW_BUF_SIZE) {
     buf->w = 0;

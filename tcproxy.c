@@ -62,10 +62,13 @@ static int process_write(struct event *fe) {
     ctx = fe->ctx;
     if (ctx->wbuf->data_size > 0) {
       if ((size = write(fe->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
-        rwb_read_size(ctx->wbuf, size);
+        rwb_commit_read(ctx->wbuf, size);
         if (ctx->wbuf->data_size == 0) return 0;
       } else {
-        log_err(LOG_ERROR, "write", "%s", strerror(errno));
+        if (errno != EAGAIN && errno != EINTR) {
+          log_err(LOG_ERROR, "write", "%s", strerror(errno));
+          //TODO failover stuff
+        }
       }
     }
   }
@@ -76,10 +79,13 @@ static int process_write(struct event *fe) {
     ctx = e->ctx;
 
     if (e->fd != -1 && ctx->wbuf->data_size > 0) {
-      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
-        rwb_read_size(ctx->wbuf, size);
+      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) >= 0) {
+        rwb_commit_read(ctx->wbuf, size);
       } else {
-        log_err(LOG_ERROR, "write fd", "%s", strerror(errno));
+        if (errno != EAGAIN && errno != EINTR) {
+          log_err(LOG_ERROR, "write", "%s", strerror(errno));
+          //TODO failover stuff
+        }
       }
     }
 
@@ -97,7 +103,7 @@ static int process_write(struct event *fe) {
 
   write_list = h;
 
-  //ok add to write list
+  //ok add this event to write list
   return 1;
 }
 
@@ -108,7 +114,7 @@ int rw_handler(struct event *e, uint32_t events) {
   if (events & EPOLLIN) {
     if (ctx->rbuf->free_size > 0) {
       if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), ctx->rbuf->free_size)) > 0) {
-        rwb_write_size(ctx->rbuf, size);
+        rwb_commit_write(ctx->rbuf, size);
         if (process_write(ctx->e)) {
           LIST_PREPEND(write_list, ctx->e);
         }
@@ -119,13 +125,16 @@ int rw_handler(struct event *e, uint32_t events) {
         event_del(ctx->e);
         return 0;
       } else {
-        log_err(LOG_ERROR, "read fd", "%s", strerror(errno));
+        if (errno != EAGAIN && errno != EINTR) {
+          log_err(LOG_ERROR, "read", "%s", strerror(errno));
+          //TODO failover stuff
+        }
       }
     }
   }
 
-  if (events & (EPOLLHUP | EPOLLHUP)) {
-    log_err(LOG_ERROR, "socket hangup", "fd(%d)", e->fd);
+  if (events & (EPOLLHUP | EPOLLERR)) {
+    log_err(LOG_ERROR, "socket error", "fd(%d)", e->fd);
     rwctx_del(ctx);
     rwctx_del(ctx->e->ctx);
     event_del(e);
