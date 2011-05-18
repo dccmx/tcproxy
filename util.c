@@ -89,7 +89,7 @@ void rwb_del_all() {
 }
 
 void update_time() {
-  now = time(NULL);
+  time(&now);
   struct tm tm;
   localtime_r(&now, &tm);
   sprintf(now_str, "%04d/%02d/%02d %02d:%02d:%02d", 
