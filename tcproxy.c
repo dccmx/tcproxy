@@ -3,17 +3,25 @@
 #include "policy.h"
 
 #define EVENT_TIMEOUT_MAX 100
-#define RWCTX_POOL_MAX 1000
+#define READCTX_POOL_MAX 1000
 
 extern FILE *logfile;
 
-struct rwctx {
+struct readctx {
   struct event *e;
   struct rwbuffer *rbuf;
   struct rwbuffer *wbuf;
 
-  struct rwctx *next;
+  struct readctx *next;
 };
+
+static void readctx_init(struct readctx *ctx) {
+  ctx->rbuf = rwbuffer_new();
+}
+static void readctx_deinit(struct readctx *ctx) {
+  rwbuffer_del(ctx->rbuf);
+}
+IMPLEMENT_STATIC_POOL(readctx, 1000);
 
 static struct policy policy;
 
@@ -23,52 +31,16 @@ static int stop = 0;
 
 static struct event *write_list = NULL;
 
-static struct rwctx *rwctx_pool = NULL;
-static int rwctx_pool_size = 0;
-
-static struct rwctx *rwctx_new() {
-  struct rwctx *ctx = NULL;
-
-  if (rwctx_pool) {
-    LIST_POP(rwctx_pool, ctx);
-    rwctx_pool_size--;
-  } else {
-    ctx = malloc(sizeof(struct rwctx));
-  }
-
-  ctx->rbuf = rwb_new();
-  ctx->next = NULL;
-
-  return ctx;
-}
-
-static void rwctx_del(struct rwctx *ctx) {
-  rwb_del(ctx->rbuf);
-  if (rwctx_pool_size < RWCTX_POOL_MAX) {
-    LIST_PREPEND(rwctx_pool, ctx);
-    rwctx_pool_size++;
-  }
-}
-
-static void rwctx_free_all() {
-  struct rwctx *r = rwctx_pool;
-  while (r) {
-    rwctx_pool = r->next;
-    free(r);
-    r = rwctx_pool;
-  }
-}
-
 static int process_write(struct event *fe) {
   int size;
   struct event *e = write_list, *pre = NULL, *h = write_list;
-  struct rwctx *ctx;
+  struct readctx *ctx;
 
   if (fe) {
     ctx = fe->ctx;
     if (ctx->wbuf->data_size > 0) {
-      if ((size = write(fe->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
-        rwb_commit_read(ctx->wbuf, size);
+      if ((size = write(fe->fd, rwbuffer_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
+        rwbuffer_commit_read(ctx->wbuf, size);
         if (ctx->wbuf->data_size == 0) return 0;
       } else {
         if (errno != EAGAIN && errno != EINTR) {
@@ -85,8 +57,8 @@ static int process_write(struct event *fe) {
     ctx = e->ctx;
 
     if (e->fd != -1 && ctx->wbuf->data_size > 0) {
-      if ((size = write(e->fd, rwb_read_buf(ctx->wbuf), ctx->wbuf->data_size)) >= 0) {
-        rwb_commit_read(ctx->wbuf, size);
+      if ((size = write(e->fd, rwbuffer_read_buf(ctx->wbuf), ctx->wbuf->data_size)) >= 0) {
+        rwbuffer_commit_read(ctx->wbuf, size);
       } else if (errno != EAGAIN && errno != EINTR) {
         log_err(LOG_ERROR, "write", "%s", strerror(errno));
         //TODO failover stuff
@@ -111,20 +83,20 @@ static int process_write(struct event *fe) {
   return 1;
 }
 
-int rw_handler(struct event *e, uint32_t events) {
+int read_handler(struct event *e, uint32_t events) {
   int size;
-  struct rwctx *ctx = e->ctx;
+  struct readctx *ctx = e->ctx;
 
   if (events & EPOLLIN) {
     if (ctx->rbuf->free_size > 0) {
-      if ((size = read(e->fd, rwb_write_buf(ctx->rbuf), ctx->rbuf->free_size)) > 0) {
-        rwb_commit_write(ctx->rbuf, size);
+      if ((size = read(e->fd, rwbuffer_write_buf(ctx->rbuf), ctx->rbuf->free_size)) > 0) {
+        rwbuffer_commit_write(ctx->rbuf, size);
         if (process_write(ctx->e)) {
           LIST_PREPEND(write_list, ctx->e);
         }
       } else if (size == 0) {
-        rwctx_del(ctx);
-        rwctx_del(ctx->e->ctx);
+        readctx_del(ctx);
+        readctx_del(ctx->e->ctx);
         event_del(e);
         event_del(ctx->e);
         return 0;
@@ -137,13 +109,17 @@ int rw_handler(struct event *e, uint32_t events) {
 
   if (events & (EPOLLHUP | EPOLLERR)) {
     log_err(LOG_ERROR, "socket error", "fd(%d)", e->fd);
-    rwctx_del(ctx);
-    rwctx_del(ctx->e->ctx);
+    readctx_del(ctx);
+    readctx_del(ctx->e->ctx);
     event_del(e);
     event_del(ctx->e);
     return 0;
   }
 
+  return 0;
+}
+
+int connect_handler(struct event *e, uint32_t events) {
   return 0;
 }
 
@@ -167,7 +143,7 @@ int accept_handler(struct event *e, uint32_t events) {
   int  fd1, fd2;
   uint32_t size = 0;
   struct sockaddr_in addr;
-  struct rwctx *ctx1, *ctx2;
+  struct readctx *ctx1, *ctx2;
   struct hostent *host;
 
   memset(&addr, 0, sizeof(struct sockaddr_in));
@@ -178,8 +154,8 @@ int accept_handler(struct event *e, uint32_t events) {
     return -1;
   }
 
-  ctx1 = rwctx_new();
-  ctx2 = rwctx_new();
+  ctx1 = readctx_new();
+  ctx2 = readctx_new();
 
   host = get_host(&addr);
 
@@ -187,18 +163,21 @@ int accept_handler(struct event *e, uint32_t events) {
   if (fd2 == -1) {
     log_err(LOG_ERROR, "connect remote host", "(%s) %s", host->addr, strerror(errno));
     //TODO failover stuff
+    close(fd1);
     return 0;
   }
 
+  //event_new_add(fd2, EPOLLIN | EPOLLOUT, connect_handler, (void *)fd1);
+
   ctx1->wbuf = ctx2->rbuf;
-  ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx1);
+  ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, read_handler, ctx1);
   if (ctx2->e == NULL) {
     log_err(LOG_ERROR, "add event", "no memory");
     goto err;
   }
 
   ctx2->wbuf = ctx1->rbuf;
-  ctx1->e = event_new_add(fd2, EPOLLIN | EPOLLHUP | EPOLLERR, rw_handler, ctx2);
+  ctx1->e = event_new_add(fd2, EPOLLIN | EPOLLHUP | EPOLLERR, read_handler, ctx2);
   if (ctx1->e == NULL) {
     log_err(LOG_ERROR, "add event", "no memory");
     event_del(ctx2->e);
@@ -210,8 +189,8 @@ int accept_handler(struct event *e, uint32_t events) {
 err:
   close(fd1);
   close(fd2);
-  rwctx_del(ctx1);
-  rwctx_del(ctx2);
+  readctx_del(ctx1);
+  readctx_del(ctx2);
   return -1;
 }
 
@@ -285,7 +264,7 @@ int main(int argc, char **argv) {
   sigemptyset(&int_action.sa_mask);
   sigaction(SIGINT, &int_action, NULL);
 
-  event_init();
+  epoll_init();
 
   fd = bind_addr(policy.listen.addr, policy.listen.port);
   if (fd == -1) {
@@ -305,8 +284,8 @@ int main(int argc, char **argv) {
   event_del(e);
 
   event_free_all();
-  rwb_free_all();
-  rwctx_free_all();
+  rwbuffer_free_all();
+  readctx_free_all();
 
   exit(EXIT_SUCCESS);
 }

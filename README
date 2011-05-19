@@ -1,10 +1,11 @@
-tcproxy is a high performance tcp proxy that can be used to 
-port forwarding and load balance.
+tcproxy is a small efficient tcp proxy that can be used to 
+port forwarding or load balance.
 
-if no ip address spacified, 127.0.0.1 is used.
+notice:
+  if no ip address spacified, any is used. localhost is used as 127.0.0.1
 
 sample usage:
-  tcproxy ":11212 -> :11211"
+  tcproxy "11212 -> 11211"
   tcproxy "192.168.0.1:11212 -> 192.168.0.2:11211"
   tcproxy "any:11212 -> rr{192.168.0.100:11211 192.168.0.101:11211 192.168.0.102:11211}"
   tcproxy "any:11212 -> hash{192.168.0.100:11211 192.168.0.101:11211 192.168.0.102:11211}"

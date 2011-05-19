@@ -6,32 +6,23 @@ static int epfd = -1;
 static int nev = 0;
 static struct epoll_event *evs = NULL;
 
-static struct event *event_pool = NULL;
-static int event_pool_size = 0;
-
 static int sockbufsize = 32*1024;
 
-int event_init() {
+int epoll_init() {
   nev = 0;
   evs = NULL;
   epfd = epoll_create(256);
   return epfd;
 }
 
-struct event *event_new() {
-  struct event *e = NULL;
-
-  if (event_pool) {
-    LIST_POP(event_pool, e);
-    event_pool_size--;
-  } else {
-    e = malloc(sizeof(struct event));
-  }
-
-  e->next = NULL;
-
-  return e;
+static void event_init(struct event *e) {
 }
+static void event_deinit(struct event *e) {
+  close(e->fd);
+  e->fd = -1;
+  nev--;
+}
+IMPLEMENT_POOL(event, 1000);
 
 int event_add(struct event *e) {
   struct epoll_event ev;
@@ -64,15 +55,6 @@ struct event *event_new_add(int fd, uint32_t events, event_handler handler, void
   return e;
 }
 
-void event_del(struct event *e) {
-  close(e->fd);
-  e->fd = -1;
-  nev--;
-  if (event_pool_size < EVENT_POOL_MAX) {
-    LIST_PREPEND(event_pool, e);
-    event_pool_size++;
-  }
-}
 
 int process_event(int t) {
   int i, n;
@@ -82,14 +64,5 @@ int process_event(int t) {
     e->handler(e, evs[i].events);
   }
   return n;
-}
-
-void event_free_all() {
-  struct event *e = event_pool;
-  while (e) {
-    event_pool = e->next;
-    free(e);
-    e = event_pool;
-  }
 }
 

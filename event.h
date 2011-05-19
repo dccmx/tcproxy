@@ -16,18 +16,16 @@ struct event {
   struct event *next;
 };
 
-int event_init();
+int epoll_init();
 
-struct event *event_new();
+DECLARE_POOL(event);
 
 int event_add(struct event *e);
 
 struct event *event_new_add(int fd, uint32_t events, event_handler handler, void *ctx);
 
-void event_del(struct event *e);
 
 int process_event(int tv);
 
-void event_free_all();
 
 #endif /* _EVENT_H_ */

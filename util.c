@@ -13,36 +13,16 @@ static const char *log_str[] = {
   "DEBUG"
 };
 
-static struct rwbuffer *rwbuffer_pool = NULL;
-static int rwbuffer_pool_size = 0;
-
-struct rwbuffer *rwb_new() {
-  struct rwbuffer *buf = NULL;
-
-  if (rwbuffer_pool) {
-    LIST_POP(rwbuffer_pool, buf);
-    rwbuffer_pool_size--;
-  } else {
-    buf = malloc(sizeof(struct rwbuffer));
-  }
-
+static void rwbuffer_init(struct rwbuffer *buf) {
   buf->data_size = buf->r = buf->w = 0;
   buf->flip = 0;
   buf->free_size = RW_BUF_SIZE;
-
-  buf->next = NULL;
-
-  return buf;
 }
-
-void rwb_del(struct rwbuffer *buf) {
-  if (rwbuffer_pool_size < RWBUF_POOL_MAX) {
-    LIST_PREPEND(rwbuffer_pool, buf);
-    rwbuffer_pool_size++;
-  }
+static void rwbuffer_deinit(struct rwbuffer *buf) {
 }
+IMPLEMENT_POOL(rwbuffer, 1000);
 
-void rwb_update_size(struct rwbuffer *buf) {
+void rwbuffer_update_size(struct rwbuffer *buf) {
   if (buf->r < buf->w) {
     buf->data_size = buf->w - buf->r;
     buf->free_size = RW_BUF_SIZE - buf->w;
@@ -60,40 +40,32 @@ void rwb_update_size(struct rwbuffer *buf) {
   }
 }
 
-char *rwb_read_buf(struct rwbuffer *buf) {
+char *rwbuffer_read_buf(struct rwbuffer *buf) {
   return &buf->data[buf->r];
 }
 
-char *rwb_write_buf(struct rwbuffer *buf) {
+char *rwbuffer_write_buf(struct rwbuffer *buf) {
   return &buf->data[buf->w];
 }
 
-void rwb_commit_read(struct rwbuffer *buf, int size) {
+void rwbuffer_commit_read(struct rwbuffer *buf, int size) {
   buf->r += size;
   if (buf->r == RW_BUF_SIZE) {
     buf->r = 0;
     buf->flip = 1 - buf->flip;
   }
-  rwb_update_size(buf);
+  rwbuffer_update_size(buf);
 }
 
-void rwb_commit_write(struct rwbuffer *buf, int size) {
+void rwbuffer_commit_write(struct rwbuffer *buf, int size) {
   buf->w += size;
   if (buf->w == RW_BUF_SIZE) {
     buf->w = 0;
     buf->flip = 1 - buf->flip;
   }
-  rwb_update_size(buf);
+  rwbuffer_update_size(buf);
 }
 
-void rwb_free_all() {
-  struct rwbuffer *r = rwbuffer_pool;
-  while (r) {
-    rwbuffer_pool = r->next;
-    free(r);
-    r = rwbuffer_pool;
-  }
-}
 
 void update_time() {
   time_t t = time(NULL);
@@ -175,6 +147,8 @@ int connect_addr(const char *host, short port) {
   } else {
     inet_aton(host, &addr.sin_addr);
   }
+
+  setnonblock(fd);
 
   if (connect(fd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in)) == -1) {
     if (errno != EINPROGRESS) {

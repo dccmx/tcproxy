@@ -35,13 +35,13 @@ clean:
 
 run: $(PROGNAME)
 	rm -f core core.[1-9][0-9]* memcheck.out callgrind.out.[1-9][0-9]* massif.out.[1-9][0-9]*
-	./$(PROGNAME) ":11212->:11211"
+	./$(PROGNAME) "11212->11211"
 
 callgrind: debug
-	valgrind --tool=callgrind --collect-systime=yes ./$(PROGNAME) ":11212->:11211"
+	valgrind --tool=callgrind --collect-systime=yes ./$(PROGNAME) "11212->11211"
 
 massif: debug
-	valgrind --tool=massif ./$(PROGNAME) ":11212->:11211"
+	valgrind --tool=massif ./$(PROGNAME) "11212->11211"
 
 memcheck: debug
-	valgrind --leak-check=full --log-file=memcheck.out ./$(PROGNAME) ":11212->:11211"
+	valgrind --leak-check=full --log-file=memcheck.out ./$(PROGNAME) "11212->11211"
