@@ -287,11 +287,13 @@ int main(int argc, char **argv) {
 
   event_init();
 
-  if ((fd = bind_addr(policy.listen.addr, policy.listen.port)) == -1) {
+  fd = bind_addr(policy.listen.addr, policy.listen.port);
+  if (fd == -1) {
     log_fatal("binding address", "%s", strerror(errno));
   }
 
-  if ((e = event_new_add(fd, EPOLLIN | EPOLLHUP | EPOLLERR, accept_handler, NULL)) == NULL) {
+  e = event_new_add(fd, EPOLLIN | EPOLLHUP | EPOLLERR, accept_handler, NULL);
+  if (e == NULL) {
     log_fatal("add accept event", "no memory");
   }
 

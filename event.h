@@ -24,7 +24,7 @@ int event_add(struct event *e);
 
 struct event *event_new_add(int fd, uint32_t events, event_handler handler, void *ctx);
 
-int event_del(struct event *e);
+void event_del(struct event *e);
 
 int process_event(int tv);
 

@@ -64,7 +64,7 @@ struct event *event_new_add(int fd, uint32_t events, event_handler handler, void
   return e;
 }
 
-int event_del(struct event *e) {
+void event_del(struct event *e) {
   close(e->fd);
   e->fd = -1;
   nev--;
@@ -72,17 +72,14 @@ int event_del(struct event *e) {
     LIST_PREPEND(event_pool, e);
     event_pool_size++;
   }
-  return epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd, NULL);
 }
 
-int process_event(int tv) {
+int process_event(int t) {
   int i, n;
-  n = epoll_wait(epfd, evs, nev, tv);
+  n = epoll_wait(epfd, evs, nev, t);
   for(i = 0; i < n; i++) {
     struct event *e = evs[i].data.ptr;
-    if (e->handler(e, evs[i].events)) {
-      //kill tcp
-    }
+    e->handler(e, evs[i].events);
   }
   return n;
 }

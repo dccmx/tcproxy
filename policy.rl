@@ -6,6 +6,7 @@
 
 static struct hostent host;
 static int addr_p;
+static int have_addr;
 
 %%{
   machine policy_parser;
@@ -16,7 +17,16 @@ static int addr_p;
 
   action init_host {
     addr_p = 0;
-    host.addr[addr_p] = 0;
+    host.addr[addr_p] = '\0';
+    have_addr = 0;
+  }
+
+  action have_addr {
+    have_addr = 1;
+  }
+
+  action init_port {
+    if (!have_addr) host.addr[0] = '\0';
     host.port = 0;
   }
 
@@ -56,10 +66,10 @@ static int addr_p;
   }
   
   ws = (' ');
-  port = (digit+);
-  dottedip = (digit+ '.' digit+ '.' digit+ '.' digit+);
+  port = (digit{1,5});
+  dottedip = (digit{1,3} '.' digit{1,3} '.' digit{1,3} '.' digit{1,3});
   addr = ('localhost' | 'any' | dottedip) $append_addr %finish_addr;
-  host = (addr? ':' port $append_port) >init_host;
+  host = ((addr ':' >have_addr)? port >init_port $append_port) >init_host;
 
   type = ('rr' %set_rr | 'hash' %set_hash);
   group = (type ws* '{' ws* host (ws+ >append_host host)* ws* '}' >append_host);
