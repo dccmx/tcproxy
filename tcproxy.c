@@ -49,7 +49,7 @@ static int process_write(struct event *fe) {
         if (ctx->wbuf->data_size == 0) return 0;
       } else {
         if (errno != EAGAIN && errno != EINTR) {
-          log_err(LOG_ERROR, "write", "%s", strerror(errno));
+          log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
           //TODO failover stuff
         }
       }
@@ -65,7 +65,7 @@ static int process_write(struct event *fe) {
       if ((size = write(e->fd, rwbuffer_read_buf(ctx->wbuf), ctx->wbuf->data_size)) >= 0) {
         rwbuffer_commit_read(ctx->wbuf, size);
       } else if (errno != EAGAIN && errno != EINTR) {
-        log_err(LOG_ERROR, "write", "%s", strerror(errno));
+        log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
         //TODO failover stuff
       }
     }
@@ -106,14 +106,14 @@ int read_handler(struct event *e, uint32_t events) {
         event_del(ctx->e);
         return 0;
       } else if (errno != EAGAIN && errno != EINTR) {
-        log_err(LOG_ERROR, "read", "%s", strerror(errno));
+        log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
         //TODO failover stuff
       }
     }
   }
 
   if (events & (EPOLLHUP | EPOLLERR)) {
-    log_err(LOG_ERROR, "socket error", "fd(%d)", e->fd);
+    log_err(LOG_ERROR, __FUNCTION__, "fd(%d)", e->fd);
     readctx_del(ctx);
     readctx_del(ctx->e->ctx);
     event_del(e);
@@ -142,7 +142,7 @@ int connect_handler(struct event *e, uint32_t events) {
   ctx1->wbuf = ctx2->rbuf;
   ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, read_handler, ctx1);
   if (ctx2->e == NULL) {
-    log_err(LOG_ERROR, "add event", "no memory");
+    log_err(LOG_ERROR, __FUNCTION__, "no memory");
     goto err;
   }
 
@@ -150,7 +150,7 @@ int connect_handler(struct event *e, uint32_t events) {
   ctx2->wbuf = ctx1->rbuf;
   ctx1->e = e;
   if (ctx1->e == NULL) {
-    log_err(LOG_ERROR, "add event", "no memory");
+    log_err(LOG_ERROR, __FUNCTION__, "no memory");
     event_del(ctx2->e);
     goto err;
   }
@@ -189,7 +189,7 @@ int accept_handler(struct event *e, uint32_t events) {
 
   fd1 = accept(e->fd, (struct sockaddr*)&addr, &size);
   if (fd1 == -1) {
-    log_err(LOG_ERROR, "accept new connection", "%s", strerror(errno));
+    log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
     return -1;
   }
 
@@ -197,7 +197,7 @@ int accept_handler(struct event *e, uint32_t events) {
 
   fd2 = connect_addr(host->addr, host->port);
   if (fd2 == -1) {
-    log_err(LOG_ERROR, "connect remote host", "(%s) %s", host->addr, strerror(errno));
+    log_err(LOG_ERROR, __FUNCTION__, "(%s) %s", host->addr, strerror(errno));
     //TODO failover stuff
     close(fd1);
     return 0;
