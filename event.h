@@ -21,9 +21,9 @@ int epoll_init();
 DECLARE_POOL(event);
 
 int event_add(struct event *e);
+int event_mod(struct event *e, uint32_t events, event_handler handler, void *ctx);
 
 struct event *event_new_add(int fd, uint32_t events, event_handler handler, void *ctx);
-
 
 int process_event(int tv);
 

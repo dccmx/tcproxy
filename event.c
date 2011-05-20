@@ -44,6 +44,19 @@ int event_add(struct event *e) {
   return 0;
 }
 
+int event_mod(struct event *e, uint32_t events, event_handler handler, void *ctx) {
+  struct epoll_event ev;
+
+  e->handler = handler;
+  e->ctx = ctx;
+
+  ev.events = events;
+  ev.data.fd = e->fd;
+  ev.data.ptr = e;
+
+  return epoll_ctl(epfd, EPOLL_CTL_MOD, e->fd, &ev);
+}
+
 struct event *event_new_add(int fd, uint32_t events, event_handler handler, void *ctx) {
   struct event *e = event_new();
   if (!e) return NULL;

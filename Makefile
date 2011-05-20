@@ -8,7 +8,7 @@ PROGNAME   = tcproxy
 VERSION    = 0.1.2
 
 OBJFILES   = event.c util.c policy.c
-INCFILES   = event.h util.h policy.h
+INCFILES   = event.h util.h policy.h pool.h
 
 CFLAGS_GEN = -Wall -g $(CFLAGS) -DVERSION=\"$(VERSION)\"
 CFLAGS_DBG = -ggdb $(CFLAGS_GEN)

@@ -11,7 +11,6 @@ struct readctx {
   struct event *e;
   struct rwbuffer *rbuf;
   struct rwbuffer *wbuf;
-
   struct readctx *next;
 };
 
@@ -22,6 +21,12 @@ static void readctx_deinit(struct readctx *ctx) {
   rwbuffer_del(ctx->rbuf);
 }
 IMPLEMENT_STATIC_POOL(readctx, 1000);
+
+struct connectctx {
+  int fd;
+  struct connectctx *next;
+};
+IMPLEMENT_SIMPLE_STATIC_POOL(connectctx, 100);
 
 static struct policy policy;
 
@@ -120,7 +125,44 @@ int read_handler(struct event *e, uint32_t events) {
 }
 
 int connect_handler(struct event *e, uint32_t events) {
+  struct connectctx *ctx = e->ctx;
+  int  fd1 = ctx->fd, fd2 = e->fd;
+  struct readctx *ctx1, *ctx2;
+
+  connectctx_del(e->ctx);
+
+  if (read(fd2, NULL, 0) != 0) {
+    close(fd1);
+    return -1;
+  }
+
+  ctx1 = readctx_new();
+  ctx2 = readctx_new();
+
+  ctx1->wbuf = ctx2->rbuf;
+  ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, read_handler, ctx1);
+  if (ctx2->e == NULL) {
+    log_err(LOG_ERROR, "add event", "no memory");
+    goto err;
+  }
+
+  event_mod(e, EPOLLIN | EPOLLHUP | EPOLLERR, read_handler, ctx2);
+  ctx2->wbuf = ctx1->rbuf;
+  ctx1->e = e;
+  if (ctx1->e == NULL) {
+    log_err(LOG_ERROR, "add event", "no memory");
+    event_del(ctx2->e);
+    goto err;
+  }
+
   return 0;
+
+err:
+  close(fd1);
+  close(fd2);
+  readctx_del(ctx1);
+  readctx_del(ctx2);
+  return -1;
 }
 
 static int hash_sockaddr(struct sockaddr_in *addr) {
@@ -143,19 +185,13 @@ int accept_handler(struct event *e, uint32_t events) {
   int  fd1, fd2;
   uint32_t size = 0;
   struct sockaddr_in addr;
-  struct readctx *ctx1, *ctx2;
   struct hostent *host;
-
-  memset(&addr, 0, sizeof(struct sockaddr_in));
 
   fd1 = accept(e->fd, (struct sockaddr*)&addr, &size);
   if (fd1 == -1) {
     log_err(LOG_ERROR, "accept new connection", "%s", strerror(errno));
     return -1;
   }
-
-  ctx1 = readctx_new();
-  ctx2 = readctx_new();
 
   host = get_host(&addr);
 
@@ -167,31 +203,11 @@ int accept_handler(struct event *e, uint32_t events) {
     return 0;
   }
 
-  //event_new_add(fd2, EPOLLIN | EPOLLOUT, connect_handler, (void *)fd1);
-
-  ctx1->wbuf = ctx2->rbuf;
-  ctx2->e = event_new_add(fd1, EPOLLIN | EPOLLHUP | EPOLLERR, read_handler, ctx1);
-  if (ctx2->e == NULL) {
-    log_err(LOG_ERROR, "add event", "no memory");
-    goto err;
-  }
-
-  ctx2->wbuf = ctx1->rbuf;
-  ctx1->e = event_new_add(fd2, EPOLLIN | EPOLLHUP | EPOLLERR, read_handler, ctx2);
-  if (ctx1->e == NULL) {
-    log_err(LOG_ERROR, "add event", "no memory");
-    event_del(ctx2->e);
-    goto err;
-  }
+  struct connectctx *ctx = connectctx_new();
+  ctx->fd = fd1;
+  event_new_add(fd2, EPOLLIN | EPOLLOUT, connect_handler, ctx);
 
   return 0;
-
-err:
-  close(fd1);
-  close(fd2);
-  readctx_del(ctx1);
-  readctx_del(ctx2);
-  return -1;
 }
 
 void usage() {
@@ -286,6 +302,7 @@ int main(int argc, char **argv) {
   event_free_all();
   rwbuffer_free_all();
   readctx_free_all();
+  connectctx_free_all();
 
   exit(EXIT_SUCCESS);
 }
