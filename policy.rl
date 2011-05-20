@@ -26,7 +26,6 @@ static int have_addr;
   }
 
   action init_port {
-    if (!have_addr) host.addr[0] = '\0';
     host.port = 0;
   }
 
@@ -44,10 +43,16 @@ static int have_addr;
   }
 
   action listen_addr {
+    if (!have_addr) {
+      host.addr[0] = '\0';
+    }
     policy->listen = host;
   }
 
   action append_host {
+    if (!have_addr) {
+      host.addr[0] = '\0';
+    }
     policy->nhost++;
     policy->hosts = realloc(policy->hosts, sizeof(struct hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
@@ -66,8 +71,8 @@ static int have_addr;
   }
   
   ws = (' ');
-  port = (digit{1,5});
-  dottedip = (digit{1,3} '.' digit{1,3} '.' digit{1,3} '.' digit{1,3});
+  port = (digit {1,5});
+  dottedip = (digit {1,3} '.' digit {1,3} '.' digit {1,3} '.' digit {1,3});
   addr = ('localhost' | 'any' | dottedip) $append_addr %finish_addr;
   host = ((addr ':' >have_addr)? port >init_port $append_port) >init_host;
 

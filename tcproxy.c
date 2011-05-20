@@ -265,7 +265,7 @@ void int_handler(int signo) {
 }
 
 int main(int argc, char **argv) {
-  int fd;
+  int i, fd;
   struct event *e;
   struct sigaction int_action;
 
@@ -285,6 +285,11 @@ int main(int argc, char **argv) {
   fd = bind_addr(policy.listen.addr, policy.listen.port);
   if (fd == -1) {
     log_fatal("binding address", "%s", strerror(errno));
+  }
+
+  log_err(LOG_NOTICE, "start", "listenning on %s:%d", policy.listen.addr, policy.listen.port);
+  for (i = 0; i < policy.nhost; i++) {
+    log_err(LOG_NOTICE, "start", "proxy to %s:%d", policy.hosts[i].addr, policy.hosts[i].port);
   }
 
   e = event_new_add(fd, EPOLLIN | EPOLLHUP | EPOLLERR, accept_handler, NULL);

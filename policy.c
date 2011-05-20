@@ -11,7 +11,7 @@ static int addr_p;
 static int have_addr;
 
 
-#line 80 "policy.rl"
+#line 85 "policy.rl"
 
 
 
@@ -225,7 +225,7 @@ static const int policy_parser_error = 0;
 static const int policy_parser_en_main = 1;
 
 
-#line 83 "policy.rl"
+#line 88 "policy.rl"
 
 int policy_parse(struct policy *policy, const char *p) {
   policy->p = p;
@@ -324,62 +324,67 @@ _match:
 	case 2:
 #line 28 "policy.rl"
 	{
-    if (!have_addr) host.addr[0] = '\0';
     host.port = 0;
   }
 	break;
 	case 3:
-#line 33 "policy.rl"
+#line 32 "policy.rl"
 	{
     host.addr[addr_p] = (*( policy->p));
     addr_p++;
   }
 	break;
 	case 4:
-#line 38 "policy.rl"
+#line 37 "policy.rl"
 	{
     host.port = host.port * 10 + ((*( policy->p)) - '0');
   }
 	break;
 	case 5:
-#line 42 "policy.rl"
+#line 41 "policy.rl"
 	{
     host.addr[addr_p] = 0;
   }
 	break;
 	case 6:
-#line 46 "policy.rl"
+#line 45 "policy.rl"
 	{
+    if (!have_addr) {
+      host.addr[0] = '\0';
+    }
     policy->listen = host;
   }
 	break;
 	case 7:
-#line 50 "policy.rl"
+#line 52 "policy.rl"
 	{
+    if (!have_addr) {
+      host.addr[0] = '\0';
+    }
     policy->nhost++;
     policy->hosts = realloc(policy->hosts, sizeof(struct hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
   }
 	break;
 	case 8:
-#line 56 "policy.rl"
+#line 61 "policy.rl"
 	{
     policy->type = PROXY_RR;
   }
 	break;
 	case 9:
-#line 60 "policy.rl"
+#line 65 "policy.rl"
 	{
     policy->type = PROXY_HASH;
   }
 	break;
 	case 10:
-#line 64 "policy.rl"
+#line 69 "policy.rl"
 	{
     print_fatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
-#line 383 "policy.c"
+#line 388 "policy.c"
 		}
 	}
 
@@ -396,20 +401,23 @@ _again:
 	while ( __nacts-- > 0 ) {
 		switch ( *__acts++ ) {
 	case 7:
-#line 50 "policy.rl"
+#line 52 "policy.rl"
 	{
+    if (!have_addr) {
+      host.addr[0] = '\0';
+    }
     policy->nhost++;
     policy->hosts = realloc(policy->hosts, sizeof(struct hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
   }
 	break;
 	case 10:
-#line 64 "policy.rl"
+#line 69 "policy.rl"
 	{
     print_fatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
-#line 413 "policy.c"
+#line 421 "policy.c"
 		}
 	}
 	}
@@ -417,18 +425,18 @@ _again:
 	_out: {}
 	}
 
-#line 90 "policy.rl"
+#line 95 "policy.rl"
 
   if (policy->cs == 
-#line 424 "policy.c"
+#line 432 "policy.c"
 0
-#line 91 "policy.rl"
+#line 96 "policy.rl"
 ) {
     return -1;
   } else if (policy ->cs < 
-#line 430 "policy.c"
+#line 438 "policy.c"
 99
-#line 93 "policy.rl"
+#line 98 "policy.rl"
 ) {
     return 1;
   }
@@ -439,12 +447,12 @@ _again:
 int policy_init(struct policy *policy) {
   memset(policy, 0, sizeof(struct policy));
   
-#line 443 "policy.c"
+#line 451 "policy.c"
 	{
 	 policy->cs = policy_parser_start;
 	}
 
-#line 103 "policy.rl"
+#line 108 "policy.rl"
   return 0;
 }
 
