@@ -3,7 +3,6 @@
 #include "policy.h"
 
 #define EVENT_TIMEOUT_MAX 100
-#define READCTX_POOL_MAX 1000
 
 extern FILE *logfile;
 
@@ -36,6 +35,14 @@ static int stop = 0;
 
 static struct event *write_list = NULL;
 
+static void close_pair(struct event *e) {
+  struct readctx *ctx = e->ctx;
+  readctx_del(ctx->e->ctx);
+  event_del(ctx->e);
+  readctx_del(ctx);
+  event_del(e);
+}
+
 static int process_write(struct event *fe) {
   int size;
   struct event *e = write_list, *pre = NULL, *h = write_list;
@@ -47,11 +54,11 @@ static int process_write(struct event *fe) {
       if ((size = write(fe->fd, rwbuffer_read_buf(ctx->wbuf), ctx->wbuf->data_size)) > 0) {
         rwbuffer_commit_read(ctx->wbuf, size);
         if (ctx->wbuf->data_size == 0) return 0;
-      } else {
-        if (errno != EAGAIN && errno != EINTR) {
-          log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
-          //TODO failover stuff
-        }
+      } else if (errno != EAGAIN && errno != EINTR) {
+        log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
+        //TODO failover stuff
+        close_pair(fe);
+        return 0;
       }
     }
   }
@@ -66,7 +73,16 @@ static int process_write(struct event *fe) {
         rwbuffer_commit_read(ctx->wbuf, size);
       } else if (errno != EAGAIN && errno != EINTR) {
         log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
+
         //TODO failover stuff
+        if (pre) pre->next = e->next;
+        else h = e->next;
+
+        close_pair(e);
+
+        pre = e;
+        e = e->next;
+        continue;
       }
     }
 
@@ -100,24 +116,20 @@ int read_handler(struct event *e, uint32_t events) {
           LIST_PREPEND(write_list, ctx->e);
         }
       } else if (size == 0) {
-        readctx_del(ctx);
-        readctx_del(ctx->e->ctx);
-        event_del(e);
-        event_del(ctx->e);
+        close_pair(e);
         return 0;
       } else if (errno != EAGAIN && errno != EINTR) {
         log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
         //TODO failover stuff
+        close_pair(e);
+        return 0;
       }
     }
   }
 
   if (events & (EPOLLHUP | EPOLLERR)) {
     log_err(LOG_ERROR, __FUNCTION__, "fd(%d)", e->fd);
-    readctx_del(ctx);
-    readctx_del(ctx->e->ctx);
-    event_del(e);
-    event_del(ctx->e);
+    close_pair(e);
     return 0;
   }
 
