@@ -1,7 +1,5 @@
 #include "event.h"
 
-#define EVENT_POOL_MAX 1000
-
 static int epfd = -1;
 static int nev = 0;
 static struct epoll_event *evs = NULL;
