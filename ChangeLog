@@ -1,3 +1,6 @@
+2011-05-21 Release 0.2.1
+	* fix ip address parse bug
+
 2011-05-20 Release 0.2
 	* nonblock connect implemented
 	* semicolon bind to address not port now
