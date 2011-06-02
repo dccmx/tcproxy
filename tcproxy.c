@@ -75,27 +75,37 @@ static int process_write(struct event *fe) {
         log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
 
         //TODO failover stuff
-        if (pre) pre->next = e->next;
-        else h = e->next;
+        if (pre) {
+          pre->next = e->next;
+        } else {
+          h = e->next;
+          e->next = NULL;
+        }
 
         close_pair(e);
 
         pre = e;
         e = e->next;
+        pre->next = NULL;
         continue;
       }
     }
 
     if (e->fd == -1 || ctx->wbuf->data_size == 0) {
       //remove e from write list
-      if (pre) pre->next = e->next;
-      else h = e->next;
+        if (pre) {
+          pre->next = e->next;
+        } else {
+          h = e->next;
+          e->next = NULL;
+        }
     }
 
     if (e == fe && ctx->wbuf->data_size > 0) return 0;
 
     pre = e;
     e = e->next;
+    pre->next = NULL;
   }
 
   write_list = h;
