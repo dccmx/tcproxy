@@ -1,3 +1,6 @@
+2011-06-2 Release 0.2.2
+	* fix a bug that causes infinit loop when process write
+
 2011-05-21 Release 0.2.1
 	* fix ip address parse bug
 
