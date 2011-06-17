@@ -205,9 +205,9 @@ static struct hostent *get_host(struct sockaddr_in *addr) {
 
 int accept_handler(struct event *e, uint32_t events) {
   int  fd1, fd2;
-  uint32_t size = 0;
   struct sockaddr_in addr;
   struct hostent *host;
+  uint32_t size = sizeof(addr);
 
   fd1 = accept(e->fd, (struct sockaddr*)&addr, &size);
   if (fd1 == -1) {
