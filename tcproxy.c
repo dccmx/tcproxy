@@ -75,18 +75,13 @@ static int process_write(struct event *fe) {
         log_err(LOG_ERROR, __FUNCTION__, "%s", strerror(errno));
 
         //TODO failover stuff
-        if (pre) {
-          pre->next = e->next;
-        } else {
-          h = e->next;
-          e->next = NULL;
-        }
+        if (pre) pre->next = e->next;
+        else h = e->next;
 
         close_pair(e);
 
-        pre = e;
-        e = e->next;
-        pre->next = NULL;
+        if (pre) e = pre->next;
+        else e = h;
         continue;
       }
     }
