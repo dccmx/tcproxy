@@ -1,4 +1,5 @@
 cachegrind.out.*
+.svn
 callgrind.out.*
 massif.out.*
 memcheck.out
