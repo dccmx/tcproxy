@@ -4,7 +4,7 @@
 
 #include "policy.h"
 
-static struct hostent host;
+static Hostent host;
 static int addr_p;
 static int have_addr;
 
@@ -54,7 +54,7 @@ static int have_addr;
       host.addr[0] = '\0';
     }
     policy->nhost++;
-    policy->hosts = realloc(policy->hosts, sizeof(struct hostent) * policy->nhost);
+    policy->hosts = realloc(policy->hosts, sizeof(Hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
   }
 
@@ -67,7 +67,7 @@ static int have_addr;
   }
 
   action error {
-    print_fatal("policy syntax error around:\"%s\"\n", fpc);
+    Fatal("policy syntax error around:\"%s\"\n", fpc);
   }
   
   ws = (' ');
@@ -86,7 +86,7 @@ static int have_addr;
 
 %% write data;
 
-int policy_parse(struct policy *policy, const char *p) {
+int ParsePolicy(Policy *policy, const char *p) {
   policy->p = p;
   policy->pe = p + strlen(p);
   policy->eof = policy->pe;
@@ -102,8 +102,8 @@ int policy_parse(struct policy *policy, const char *p) {
   return 0;
 }
 
-int policy_init(struct policy *policy) {
-  memset(policy, 0, sizeof(struct policy));
+int InitPolicy(Policy *policy) {
+  memset(policy, 0, sizeof(Policy));
   %% write init;
   return 0;
 }

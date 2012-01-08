@@ -6,17 +6,17 @@
 #define PROXY_RR 0
 #define PROXY_HASH 1
 
-struct hostent {
+typedef struct Hostent {
   char addr[16];
   int port;
-};
+} Hostent;
 
-struct policy {
-  struct hostent listen;
+typedef struct Policy {
+  Hostent listen;
 
   int type;
 
-  struct hostent *hosts;
+  Hostent *hosts;
   int nhost;
 
   int curhost;
@@ -24,10 +24,10 @@ struct policy {
   //ragel stuff
   const char *p, *pe, *eof;
   int cs;
-};
+} Policy;
 
-int policy_init(struct policy *policy);
-int policy_parse(struct policy *policy, const char *p);
+int InitPolicy(Policy *policy);
+int ParsePolicy(Policy *policy, const char *str);
 
 #endif /* _POLICY_H_ */
 

@@ -18,7 +18,30 @@
   exit(EXIT_FAILURE);\
 }while(0)
 
-void Log(int level, const char *fmt, ...);
+#define BUFFER_SIZE 32768
+
+typedef struct BufferListNode {
+  char data[BUFFER_SIZE];
+  int pos;
+  struct BufferListNode *next;
+} BufferListNode;
+
+typedef struct BufferList {
+  BufferListNode *head;
+  BufferListNode *tail;
+  BufferListNode *cur_space;
+} BufferList;
+
+BufferList *AllocBufferList(int n);
+
+void FreeBufferList(BufferList *blist);
+char *BufferListGetData(BufferList *blist, int *len);
+char *BufferListGetSpace(BufferList *blist, int *len);
+void BufferListPop(BufferList *blist, int len);
+void BufferListPush(BufferList *blist, int len);
+
 void Daemonize();
+
+void Log(int level, const char *fmt, ...);
 
 #endif /* _UTIL_H_ */

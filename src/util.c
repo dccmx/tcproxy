@@ -1,15 +1,13 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "util.h"
-
-#define RWBUF_POOL_MAX 1000
 
 static time_t now;
 static char now_str[sizeof("2011/05/18 10:26:21")];
@@ -60,6 +58,64 @@ void Daemonize() {
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     if (fd > STDERR_FILENO) close(fd);
+  }
+}
+
+BufferList *AllocBufferList(int n) {
+  BufferList *blist = malloc(sizeof(BufferList));
+  BufferListNode *buf = malloc(sizeof(BufferListNode));
+  BufferListNode *pre = buf;
+  int i;
+
+  buf->pos = 0;
+  buf->next = NULL;
+
+  blist->head = buf;
+  blist->head = blist->cur_space = buf;
+
+  for (i = 1; i < n; i++) {
+    buf = malloc(sizeof(BufferListNode));
+    buf->pos = 0;
+    buf->next = NULL;
+    pre->next = buf;
+  }
+
+  blist->tail = buf;
+
+  return blist;
+}
+
+void FreeBufferList(BufferList *head) {
+}
+
+char *BufferListGetSpace(BufferList *blist, int *len) {
+  if (blist->cur_space == blist->tail && blist->cur_space->pos == BUFFER_SIZE) return NULL;
+  *len = BUFFER_SIZE - blist->cur_space->pos;
+  return blist->cur_space->data + blist->cur_space->pos;
+}
+
+void BufferListPush(BufferList *blist, int len) {
+  blist->cur_space->pos += len;
+  if (blist->cur_space->pos == BUFFER_SIZE && blist->cur_space != blist->tail) {
+    blist->cur_space = blist->cur_space->next;
+  }
+}
+
+char *BufferListGetData(BufferList *blist, int *len) {
+  if (blist->head == blist->head && blist->head->pos == 0) return NULL;
+  *len = blist->head->pos;
+  return blist->head->data + blist->head->pos;
+}
+
+void BufferListPop(BufferList *blist, int len) {
+  blist->head->pos += len;
+  if (blist->head->pos == BUFFER_SIZE) {
+    BufferListNode *cur = blist->head;
+    blist->head = blist->head->next;
+    blist->tail->next = cur;
+    cur->pos = 0;
+    cur->next = NULL;
+    if (blist->head == NULL) blist->head = blist->tail;
   }
 }
 

@@ -6,7 +6,7 @@
 
 #include "policy.h"
 
-static struct hostent host;
+static Hostent host;
 static int addr_p;
 static int have_addr;
 
@@ -227,7 +227,7 @@ static const int policy_parser_en_main = 1;
 
 #line 88 "policy.rl"
 
-int policy_parse(struct policy *policy, const char *p) {
+int ParsePolicy(Policy *policy, const char *p) {
   policy->p = p;
   policy->pe = p + strlen(p);
   policy->eof = policy->pe;
@@ -264,7 +264,7 @@ _resume:
 			else if ( (*( policy->p)) > *_mid )
 				_lower = _mid + 1;
 			else {
-				_trans += (_mid - _keys);
+				_trans += (unsigned int)(_mid - _keys);
 				goto _match;
 			}
 		}
@@ -287,7 +287,7 @@ _resume:
 			else if ( (*( policy->p)) > _mid[1] )
 				_lower = _mid + 2;
 			else {
-				_trans += ((_mid - _keys)>>1);
+				_trans += (unsigned int)((_mid - _keys)>>1);
 				goto _match;
 			}
 		}
@@ -362,7 +362,7 @@ _match:
       host.addr[0] = '\0';
     }
     policy->nhost++;
-    policy->hosts = realloc(policy->hosts, sizeof(struct hostent) * policy->nhost);
+    policy->hosts = realloc(policy->hosts, sizeof(Hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
   }
 	break;
@@ -381,7 +381,7 @@ _match:
 	case 10:
 #line 69 "policy.rl"
 	{
-    print_fatal("policy syntax error around:\"%s\"\n", ( policy->p));
+    Fatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
 #line 388 "policy.c"
@@ -407,14 +407,14 @@ _again:
       host.addr[0] = '\0';
     }
     policy->nhost++;
-    policy->hosts = realloc(policy->hosts, sizeof(struct hostent) * policy->nhost);
+    policy->hosts = realloc(policy->hosts, sizeof(Hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
   }
 	break;
 	case 10:
 #line 69 "policy.rl"
 	{
-    print_fatal("policy syntax error around:\"%s\"\n", ( policy->p));
+    Fatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
 #line 421 "policy.c"
@@ -444,8 +444,8 @@ _again:
   return 0;
 }
 
-int policy_init(struct policy *policy) {
-  memset(policy, 0, sizeof(struct policy));
+int InitPolicy(Policy *policy) {
+  memset(policy, 0, sizeof(Policy));
   
 #line 451 "policy.c"
 	{
