@@ -23,6 +23,7 @@ typedef struct Client {
   int fd;
   struct Client *remote;
   BufferList *blist;
+  void (*OnError)(struct Client *c);
 } Client;
 
 void FreeRemote(Client *c);
@@ -37,7 +38,7 @@ void Usage() {
       "  -v         show version and exit\n"
       "  -h         show help and exit\n\n"
       "examples:\n"
-      "  tcproxy \":11212 -> :11211\"\n"
+      "  tcproxy \"11212 -> 11211\"\n"
       "  tcproxy \"127.0.0.1:6379 -> rr{192.168.0.100:6379 192.168.0.101:6379}\"\n\n"
       );
   exit(EXIT_SUCCESS);
@@ -82,13 +83,18 @@ void SignalHandler(int signo) {
   }
 }
 
-Client *AllocRemote() {
+void RemoteDown(Client *r) {
+}
+
+Client *AllocRemote(Client *c) {
   int fd = anetTcpNonBlockConnect(error_, policy.hosts[0].addr, policy.hosts[0].port);
   if (fd == -1) return NULL;
-  Client *c = malloc(sizeof(Client));
-  c->fd = fd;
-  c->blist = AllocBufferList(2);
-  if (c == NULL || aeCreateFileEvent(el, c->fd, AE_READABLE, ReadIncome, c) == AE_ERR) {
+  Client *r = malloc(sizeof(Client));
+  r->fd = fd;
+  r->remote = c;
+  r->OnError = RemoteDown;
+  r->blist = AllocBufferList(3);
+  if (c == NULL || aeCreateFileEvent(el, r->fd, AE_READABLE, ReadIncome, r) == AE_ERR) {
     close(fd);
     return NULL;
   }
@@ -96,13 +102,24 @@ Client *AllocRemote() {
   return c;
 }
 
+void FreeClient(Client *c) {
+  if (c == NULL) return;
+  aeDeleteFileEvent(el, c->fd, AE_READABLE);
+  aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+  close(c->fd);
+  FreeRemote(c->remote);
+  free(c);
+}
+
+
 Client *AllocClient(int fd) {
   Client *c = malloc(sizeof(Client));
   if (c == NULL) return NULL;
 
   c->fd = fd;
-  c->blist = AllocBufferList(1);
-  c->remote = AllocRemote();
+  c->blist = AllocBufferList(3);
+  c->remote = AllocRemote(c);
+  c->OnError = FreeClient;
   if (c->remote == NULL) {
     close(fd);
     free(c);
@@ -112,15 +129,11 @@ Client *AllocClient(int fd) {
   return c;
 }
 
-void FreeClient(Client *c) {
-  if (c == NULL) return;
-  close(c->fd);
-  FreeRemote(c->remote);
-  free(c);
-}
-
-void FreeRemote(Client *c) {
-  FreeClient(c);
+void FreeRemote(Client *r) {
+  aeDeleteFileEvent(el, r->fd, AE_READABLE);
+  aeDeleteFileEvent(el, r->fd, AE_WRITABLE);
+  close(r->fd);
+  free(r);
 }
 
 void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -148,7 +161,7 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (errno == EAGAIN) {
       nwritten = 0;
     } else {
-      // write error
+      c->OnError(c);
       return;
     }
   }
@@ -199,7 +212,7 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
   return;
 
 ERROR:
-  FreeClient(c);
+  c->OnError(c);
 }
 
 void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -246,8 +259,9 @@ int main(int argc, char **argv) {
     LogFatal("listen failed");
   }
 
-  Log(LOG_NOTICE, "listenning on %s:%d", policy.listen.addr, policy.listen.port);
+  Log(LOG_NOTICE, "listenning on %s:%d", (policy.listen.addr? policy.listen.addr : "any"), policy.listen.port);
   for (i = 0; i < policy.nhost; i++) {
+    if (policy.hosts[i].addr == NULL) policy.hosts[i].addr = "127.0.0.1";
     Log(LOG_NOTICE, "proxy to %s:%d", policy.hosts[i].addr, policy.hosts[i].port);
   }
 

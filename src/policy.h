@@ -7,7 +7,7 @@
 #define PROXY_HASH 1
 
 typedef struct Hostent {
-  char addr[16];
+  char *addr;
   int port;
 } Hostent;
 

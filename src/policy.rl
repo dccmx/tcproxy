@@ -17,7 +17,7 @@ static int have_addr;
 
   action init_host {
     addr_p = 0;
-    host.addr[addr_p] = '\0';
+    host.addr = NULL;
     have_addr = 0;
   }
 
@@ -30,6 +30,7 @@ static int have_addr;
   }
 
   action append_addr {
+    if (host.addr == NULL) host.addr = malloc(16 * sizeof(char));
     host.addr[addr_p] = fc;
     addr_p++;
   }
@@ -39,19 +40,19 @@ static int have_addr;
   }
 
   action finish_addr {
-    host.addr[addr_p] = 0;
+    host.addr[addr_p] = '\0';
   }
 
   action listen_addr {
     if (!have_addr) {
-      host.addr[0] = '\0';
+      host.addr = NULL;
     }
     policy->listen = host;
   }
 
   action append_host {
     if (!have_addr) {
-      host.addr[0] = '\0';
+      host.addr = NULL;
     }
     policy->nhost++;
     policy->hosts = realloc(policy->hosts, sizeof(Hostent) * policy->nhost);
