@@ -2,7 +2,10 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "util.h"
 
@@ -19,7 +22,7 @@ static const char *log_str[] = {
   "DEBUG"
 };
 
-void update_time() {
+static void UpdateTime() {
   time_t t = time(NULL);
 
   //update time every second
@@ -33,14 +36,30 @@ void update_time() {
       tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
-void log_msg(int level, const char *msg, const char *fmt, ...) { 
-  va_list  args;
+void Log(int level, const char *fmt, ...) { 
+  va_list args;
 
-  update_time();
+  UpdateTime();
   
-  fprintf(logfile, "%s [%s] %s: ", now_str, log_str[level], msg);
+  fprintf(logfile, "%s [%s] ", now_str, log_str[level]);
   va_start(args, fmt);
   vfprintf(logfile, fmt, args);
   fprintf(logfile, "\n");
   va_end(args);
 }
+
+void Daemonize() {
+  int fd;
+
+  if (fork() != 0) exit(0); /* parent exits */
+
+  setsid(); /* create a new session */
+
+  if ((fd = open("/dev/null", O_RDWR, 0)) != -1) {
+    dup2(fd, STDIN_FILENO);
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    if (fd > STDERR_FILENO) close(fd);
+  }
+}
+

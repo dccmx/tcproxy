@@ -6,26 +6,19 @@
 #define LOG_NOTICE 2
 #define LOG_DEBUG 3
 
-#define log_fatal(s...) do {\
-  log_err(LOG_FATAL, s);\
+#define LogFatal(s...) do {\
+  Log(LOG_FATAL, s);\
   exit(EXIT_FAILURE);\
 }while(0)
 
-#define print_fatal(s...) do {\
+#define Fatal(s...) do {\
   fprintf(stderr, "fatal: ");\
   fprintf(stderr, s);\
   fprintf(stderr, "\n");\
   exit(EXIT_FAILURE);\
 }while(0)
 
-void update_time();
-
-void log_msg(int level, const char *msg, const char *fmt, ...);
-
-int bind_addr(const char *host, short port);
-
-int connect_addr(const char *host, short port);
-
-int setnonblock(int fd);
+void Log(int level, const char *fmt, ...);
+void Daemonize();
 
 #endif /* _UTIL_H_ */
