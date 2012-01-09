@@ -15,7 +15,6 @@
 
 Policy  policy;
 static int run_daemonize = 0;
-extern FILE* logfile;
 static char error_[1024];
 aeEventLoop *el;
 
@@ -24,6 +23,7 @@ typedef struct Client {
   struct Client *remote;
   BufferList *blist;
   void (*OnError)(struct Client *c);
+  void (*OnRemoteDown)(struct Client *c);
 } Client;
 
 void FreeRemote(Client *c);
@@ -35,7 +35,8 @@ void Usage() {
       "options:\n"
       "  -l file    specify log file\n"
       "  -d         run in background\n"
-      "  -v         show version and exit\n"
+      "  -v         show detailed log\n"
+      "  --version  show version and exit\n"
       "  -h         show help and exit\n\n"
       "examples:\n"
       "  tcproxy \"11212 -> 11211\"\n"
@@ -45,7 +46,11 @@ void Usage() {
 }
 
 void ParseArgs(int argc, char **argv) {
-  int i, ret = -1;
+  int i, j, ret = -1;
+  const char *logfile = "stderr";
+  int loglevel = kError;
+
+  InitLogger(loglevel, NULL);
 
   InitPolicy(&policy);
 
@@ -53,27 +58,31 @@ void ParseArgs(int argc, char **argv) {
     if (argv[i][0] == '-') {
       if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
         Usage();
-      } else if (!strcmp(argv[i], "-v")) {
+      } else if (!strcmp(argv[i], "--version")) {
         printf("tcproxy "VERSION"\n\n");
         exit(EXIT_SUCCESS);
       } else if (!strcmp(argv[i], "-d")) {
         run_daemonize = 1;
       } else if (!strcmp(argv[i], "-l")) {
-        if (++i >= argc) Fatal("file name must be specified");
-        if ((logfile = fopen(argv[i], "a+")) == NULL) {
-          logfile = stderr;
-          Log(LOG_ERROR, "openning log file %s", strerror(errno));
+        if (++i >= argc) LogFatal("file name must be specified");
+        logfile = argv[i];
+      } else if (!strncmp(argv[i], "-v", 2)) {
+        for (j = 1; argv[i][j] != '\0'; j++) {
+          if (argv[i][j] == 'v') loglevel++;
+          else LogFatal("invalid argument %s", argv[i]);;
         }
       } else {
-        Fatal("unknow option %s\n", argv[i]);
+        LogFatal("unknow option %s\n", argv[i]);
       }
     } else {
       ret = ParsePolicy(&policy, argv[i]);
     }
   }
 
+  InitLogger(loglevel, logfile);
+
   if (ret) {
-    Fatal("policy not valid");
+    LogFatal("policy not valid");
   }
 }
 
@@ -84,22 +93,29 @@ void SignalHandler(int signo) {
 }
 
 void RemoteDown(Client *r) {
+  r->remote->OnRemoteDown(r->remote);
 }
 
 Client *AllocRemote(Client *c) {
-  int fd = anetTcpNonBlockConnect(error_, policy.hosts[0].addr, policy.hosts[0].port);
-  if (fd == -1) return NULL;
   Client *r = malloc(sizeof(Client));
+  int fd = anetTcpNonBlockConnect(error_, policy.hosts[0].addr, policy.hosts[0].port);
+
+  if (r == NULL || fd == -1) return NULL;
+  LogDebug("connect remote fd %d", fd);
+  anetNonBlock(NULL, fd);
+  anetTcpNoDelay(NULL, fd);
   r->fd = fd;
   r->remote = c;
   r->OnError = RemoteDown;
   r->blist = AllocBufferList(3);
-  if (c == NULL || aeCreateFileEvent(el, r->fd, AE_READABLE, ReadIncome, r) == AE_ERR) {
+  if (aeCreateFileEvent(el, r->fd, AE_READABLE, ReadIncome, r) == AE_ERR) {
     close(fd);
     return NULL;
   }
 
-  return c;
+  LogDebug("new remote %d %d", r->fd, c->fd);
+
+  return r;
 }
 
 void FreeClient(Client *c) {
@@ -111,20 +127,28 @@ void FreeClient(Client *c) {
   free(c);
 }
 
+void ReAllocRemote(Client *c) {
+}
 
 Client *AllocClient(int fd) {
   Client *c = malloc(sizeof(Client));
   if (c == NULL) return NULL;
 
+  anetNonBlock(NULL, fd);
+  anetTcpNoDelay(NULL, fd);
+
   c->fd = fd;
   c->blist = AllocBufferList(3);
   c->remote = AllocRemote(c);
   c->OnError = FreeClient;
+  c->OnRemoteDown = ReAllocRemote;
   if (c->remote == NULL) {
     close(fd);
     free(c);
     return NULL;
   }
+
+  LogDebug("new client %d %d", c->fd, c->remote->fd);
 
   return c;
 }
@@ -138,17 +162,20 @@ void FreeRemote(Client *r) {
 
 void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
   Client *c = (Client*)privdata;
-  int nwritten = 0, totwritten = 0;
+  int len, nwritten = 0, totwritten = 0;
   char *buf;
-  int len;
   
-  fprintf(stderr, "send outcome");
+  LogDebug("send outcome");
 
-  while ((buf = BufferListGetData(c->blist, &len)) != NULL) {
+  while (1) {
+    buf = BufferListGetData(c->blist, &len);
+    LogDebug("buflen to write %p %d fd %d", c->blist, len, fd);
+    if (buf == NULL) break;
     nwritten = write(fd, buf, len);
     if (nwritten <= 0) break;
 
     totwritten += nwritten;
+    LogDebug("write and pop data %p %d", c->blist, nwritten);
     BufferListPop(c->blist, nwritten);
     /* Note that we avoid to send more than MAX_WRITE_PER_EVENT
      * bytes, in a single threaded server it's a good idea to serve
@@ -157,23 +184,27 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (totwritten > MAX_WRITE_PER_EVENT) break;
   }
 
+  LogDebug("totwritten %d", totwritten);
+
   if (nwritten == -1) {
     if (errno == EAGAIN) {
       nwritten = 0;
     } else {
+      LogDebug("write error %s", strerror(errno));
       c->OnError(c);
       return;
     }
   }
 
   if (BufferListGetData(c->blist, &len) == NULL) {
+    LogDebug("delete write event");
     aeDeleteFileEvent(el, fd, AE_WRITABLE);
   }
 }
 
 int SetWriteEvent(Client *c) {
   if (aeCreateFileEvent(el, c->fd, AE_WRITABLE, SendOutcome, c) == AE_ERR) {
-    Log(LOG_ERROR, "Set write event failed");
+    LogError("Set write event failed");
     return -1;
   }
   return 0;
@@ -183,9 +214,13 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
   Client *c = (Client*)privdata;
   Client *r = c->remote;
   char *buf;
-  int len, i;
-  while ((buf = BufferListGetSpace(r->blist, &len)) != NULL) {
-    int nread = read(fd, buf, len);
+  int len, nread;
+
+  LogDebug("c fd %d, r fd %d", c->fd, r->fd);
+  while (1) {
+    buf = BufferListGetSpace(r->blist, &len);
+    if (buf == NULL) break;
+    nread = read(fd, buf, len);
     if (nread == -1) {
       if (errno == EAGAIN) {
         // no data
@@ -196,14 +231,16 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
       }
     } else if (nread == 0) {
       // connection closed
-      Log(LOG_NOTICE, "connection closed");
+      LogInfo("connection closed");
       goto ERROR;
     }
 
     if (nread) {
-      for (i = 0; i < nread; i++) printf("%c", buf[i]);
-      SetWriteEvent(r);
+      LogDebug("push data %p %d", r->blist, nread);
       BufferListPush(r->blist, nread);
+      buf = BufferListGetData(r->blist, &len);
+      LogDebug("after push %p %d", r->blist, len);
+      SetWriteEvent(r);
     } else {
       break;
     }
@@ -221,15 +258,15 @@ void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
   cfd = anetTcpAccept(error_, fd, cip, &cport);
   if (cfd == AE_ERR) {
-    Log(LOG_ERROR, "Accept client connection failed: %s", error_);
+    LogError("Accept client connection failed: %s", error_);
     return;
   }
-  Log(LOG_NOTICE, "Accepted %s:%d", cip, cport);
+  LogInfo("Accepted %s:%d", cip, cport);
 
   Client *c = AllocClient(cfd);
 
   if (c == NULL || aeCreateFileEvent(el, cfd, AE_READABLE, ReadIncome, c) == AE_ERR) {
-    Log(LOG_ERROR, "create failed");
+    LogError("create failed");
     FreeClient(c);
   }
 }
@@ -237,8 +274,6 @@ void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 int main(int argc, char **argv) {
   int i, listen_fd;
   struct sigaction sig_action;
-
-  logfile = stderr;
 
   ParseArgs(argc, argv);
 
@@ -259,10 +294,10 @@ int main(int argc, char **argv) {
     LogFatal("listen failed");
   }
 
-  Log(LOG_NOTICE, "listenning on %s:%d", (policy.listen.addr? policy.listen.addr : "any"), policy.listen.port);
+  LogInfo("listenning on %s:%d", (policy.listen.addr? policy.listen.addr : "any"), policy.listen.port);
   for (i = 0; i < policy.nhost; i++) {
     if (policy.hosts[i].addr == NULL) policy.hosts[i].addr = "127.0.0.1";
-    Log(LOG_NOTICE, "proxy to %s:%d", policy.hosts[i].addr, policy.hosts[i].port);
+    LogInfo("proxy to %s:%d", policy.hosts[i].addr, policy.hosts[i].port);
   }
 
   aeMain(el);

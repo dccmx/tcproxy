@@ -6,21 +6,25 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 
 #include "util.h"
 
-static time_t now;
-static char now_str[sizeof("2011/05/18 10:26:21")];
-FILE *logfile;
-
-static const char *log_str[] = {
+static LogLevel log_level = kDebug;
+static FILE *log_file = NULL;
+static char now_str[sizeof("2011/11/11 11:11:11")];
+static const char *LevelName[] = {
+  "NONE",
   "FATAL",
+  "CRITICAL",
   "ERROR",
-  "NOTICE",
-  "DEBUG"
+  "WARNING",
+  "INFO",
+  "DEBUG",
 };
 
 static void UpdateTime() {
+  static time_t now = 0;
   time_t t = time(NULL);
 
   //update time every second
@@ -29,22 +33,43 @@ static void UpdateTime() {
 
   struct tm tm;
   localtime_r(&now, &tm);
-  sprintf(now_str, "%04d/%02d/%02d %02d:%02d:%02d", 
+  sprintf(now_str, "%04d/%02d/%02d %02d:%02d:%02d",
       1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday, 
       tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
-void Log(int level, const char *fmt, ...) { 
-  va_list args;
-
-  UpdateTime();
-  
-  fprintf(logfile, "%s [%s] ", now_str, log_str[level]);
+void LogPrint(LogLevel level, const char *fmt, ...) {
+  va_list  args;
+  if (level > log_level) return;
   va_start(args, fmt);
-  vfprintf(logfile, fmt, args);
-  fprintf(logfile, "\n");
+  if (log_file) vfprintf(log_file, fmt, args);
   va_end(args);
+  fflush(log_file);
 }
+
+void LogInternal(LogLevel level, const char *fmt, ...) {
+  va_list  args;
+  if (level > log_level) return;
+  UpdateTime();
+  if (log_file) fprintf(log_file, "%s [%s] ", now_str, LevelName[level]);
+  va_start(args, fmt);
+  if (log_file) vfprintf(log_file, fmt, args);
+  va_end(args);
+  fflush(log_file);
+}
+
+void InitLogger(LogLevel level, const char *filename) {
+  log_level = level;
+
+  if (filename == NULL || strcmp(filename, "stderr") == 0 || strcmp(filename, "") == 0) {
+    log_file = stderr;
+  } else if (strcmp(filename, "stdout") == 0) {
+    log_file = stdout;
+  } else {
+    log_file = fopen(filename, "a+");
+  }
+}
+
 
 void Daemonize() {
   int fd;
@@ -67,15 +92,15 @@ BufferList *AllocBufferList(int n) {
   BufferListNode *pre = buf;
   int i;
 
-  buf->pos = 0;
+  buf->size = 0;
   buf->next = NULL;
 
   blist->head = buf;
-  blist->head = blist->cur_space = buf;
+  blist->head = blist->cur_node = buf;
 
   for (i = 1; i < n; i++) {
     buf = malloc(sizeof(BufferListNode));
-    buf->pos = 0;
+    buf->size = 0;
     buf->next = NULL;
     pre->next = buf;
   }
@@ -89,31 +114,39 @@ void FreeBufferList(BufferList *head) {
 }
 
 char *BufferListGetSpace(BufferList *blist, int *len) {
-  if (blist->cur_space == blist->tail && blist->cur_space->pos == BUFFER_SIZE) return NULL;
-  *len = BUFFER_SIZE - blist->cur_space->pos;
-  return blist->cur_space->data + blist->cur_space->pos;
+  if (blist->cur_node == blist->tail && blist->cur_node->size == BUFFER_SIZE) {
+    *len = 0;
+    return NULL;
+  }
+  *len = BUFFER_SIZE - blist->cur_node->size;
+  return blist->cur_node->data + blist->cur_node->size;
 }
 
 void BufferListPush(BufferList *blist, int len) {
-  blist->cur_space->pos += len;
-  if (blist->cur_space->pos == BUFFER_SIZE && blist->cur_space != blist->tail) {
-    blist->cur_space = blist->cur_space->next;
+  blist->cur_node->size += len;
+  LogDebug("cur head %p cur node %p data %d", blist->head, blist->cur_node, blist->head->size - blist->cur_pos);
+  if (blist->cur_node->size == BUFFER_SIZE && blist->cur_node != blist->tail) {
+    blist->cur_node = blist->cur_node->next;
   }
 }
 
 char *BufferListGetData(BufferList *blist, int *len) {
-  if (blist->head == blist->head && blist->head->pos == 0) return NULL;
-  *len = blist->head->pos;
-  return blist->head->data + blist->head->pos;
+  if (blist->head == blist->cur_node && blist->cur_pos == blist->head->size) {
+    *len = 0;
+    return NULL;
+  }
+  *len = blist->head->size - blist->cur_pos;
+  return blist->head->data + blist->cur_pos;
 }
 
 void BufferListPop(BufferList *blist, int len) {
-  blist->head->pos += len;
-  if (blist->head->pos == BUFFER_SIZE) {
+  blist->cur_pos += len;
+  if (blist->cur_pos == blist->head->size && blist->head != blist->cur_node) {
     BufferListNode *cur = blist->head;
     blist->head = blist->head->next;
     blist->tail->next = cur;
-    cur->pos = 0;
+    cur->size = 0;
+    blist->cur_pos = 0;
     cur->next = NULL;
     if (blist->head == NULL) blist->head = blist->tail;
   }
