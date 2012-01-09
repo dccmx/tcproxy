@@ -11,7 +11,7 @@ static int addr_p;
 static int have_addr;
 
 
-#line 86 "policy.rl"
+#line 92 "policy.rl"
 
 
 
@@ -225,15 +225,27 @@ static const int policy_parser_error = 0;
 static const int policy_parser_en_main = 1;
 
 
-#line 89 "policy.rl"
+#line 95 "policy.rl"
 
-int ParsePolicy(Policy *policy, const char *p) {
+Policy *ParsePolicy(const char *p) {
+  Policy *policy = malloc(sizeof(Policy));
+
+  memset(policy, 0, sizeof(Policy));
+  host.addr = NULL;
+  
+#line 237 "policy.c"
+	{
+	 policy->cs = policy_parser_start;
+	}
+
+#line 102 "policy.rl"
+
   policy->p = p;
   policy->pe = p + strlen(p);
   policy->eof = policy->pe;
 
   
-#line 237 "policy.c"
+#line 249 "policy.c"
 	{
 	int _klen;
 	unsigned int _trans;
@@ -330,62 +342,68 @@ _match:
 	case 3:
 #line 32 "policy.rl"
 	{
-    if (host.addr == NULL) host.addr = malloc(16 * sizeof(char));
+    if (host.addr == NULL) {
+      host.addr = malloc(16 * sizeof(char));
+    }
     host.addr[addr_p] = (*( policy->p));
     addr_p++;
   }
 	break;
 	case 4:
-#line 38 "policy.rl"
+#line 40 "policy.rl"
 	{
     host.port = host.port * 10 + ((*( policy->p)) - '0');
   }
 	break;
 	case 5:
-#line 42 "policy.rl"
+#line 44 "policy.rl"
 	{
     host.addr[addr_p] = '\0';
   }
 	break;
 	case 6:
-#line 46 "policy.rl"
+#line 48 "policy.rl"
 	{
     if (!have_addr) {
+      free(host.addr);
       host.addr = NULL;
     }
     policy->listen = host;
+    host.addr = NULL;
   }
 	break;
 	case 7:
-#line 53 "policy.rl"
+#line 57 "policy.rl"
 	{
     if (!have_addr) {
+      free(host.addr);
       host.addr = NULL;
     }
     policy->nhost++;
     policy->hosts = realloc(policy->hosts, sizeof(Hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
+    host.addr = NULL;
   }
 	break;
 	case 8:
-#line 62 "policy.rl"
+#line 68 "policy.rl"
 	{
     policy->type = PROXY_RR;
   }
 	break;
 	case 9:
-#line 66 "policy.rl"
+#line 72 "policy.rl"
 	{
     policy->type = PROXY_HASH;
   }
 	break;
 	case 10:
-#line 70 "policy.rl"
+#line 76 "policy.rl"
 	{
-    Fatal("policy syntax error around:\"%s\"\n", ( policy->p));
+    LogFatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
-#line 389 "policy.c"
+#line 407 "policy.c"
 		}
 	}
 
@@ -402,23 +420,25 @@ _again:
 	while ( __nacts-- > 0 ) {
 		switch ( *__acts++ ) {
 	case 7:
-#line 53 "policy.rl"
+#line 57 "policy.rl"
 	{
     if (!have_addr) {
+      free(host.addr);
       host.addr = NULL;
     }
     policy->nhost++;
     policy->hosts = realloc(policy->hosts, sizeof(Hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
+    host.addr = NULL;
   }
 	break;
 	case 10:
-#line 70 "policy.rl"
+#line 76 "policy.rl"
 	{
-    Fatal("policy syntax error around:\"%s\"\n", ( policy->p));
+    LogFatal("policy syntax error around:\"%s\"\n", ( policy->p));
   }
 	break;
-#line 422 "policy.c"
+#line 442 "policy.c"
 		}
 	}
 	}
@@ -426,34 +446,26 @@ _again:
 	_out: {}
 	}
 
-#line 96 "policy.rl"
+#line 108 "policy.rl"
 
   if (policy->cs == 
-#line 433 "policy.c"
+#line 453 "policy.c"
 0
-#line 97 "policy.rl"
+#line 109 "policy.rl"
 ) {
-    return -1;
-  } else if (policy ->cs < 
-#line 439 "policy.c"
-99
-#line 99 "policy.rl"
-) {
-    return 1;
+    free(policy);
+    return NULL;
   }
 
-  return 0;
+  return policy;
 }
 
-int InitPolicy(Policy *policy) {
-  memset(policy, 0, sizeof(Policy));
-  
-#line 452 "policy.c"
-	{
-	 policy->cs = policy_parser_start;
-	}
-
-#line 109 "policy.rl"
-  return 0;
+void FreePolicy(Policy *policy) {
+  int i;
+  free(policy->listen.addr);
+  for (i = 0; i < policy->nhost; i++) {
+    free(policy->hosts[i].addr);
+  }
+  free(policy->hosts);
+  free(policy);
 }
-

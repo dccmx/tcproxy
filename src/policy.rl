@@ -30,7 +30,9 @@ static int have_addr;
   }
 
   action append_addr {
-    if (host.addr == NULL) host.addr = malloc(16 * sizeof(char));
+    if (host.addr == NULL) {
+      host.addr = malloc(16 * sizeof(char));
+    }
     host.addr[addr_p] = fc;
     addr_p++;
   }
@@ -45,18 +47,22 @@ static int have_addr;
 
   action listen_addr {
     if (!have_addr) {
+      free(host.addr);
       host.addr = NULL;
     }
     policy->listen = host;
+    host.addr = NULL;
   }
 
   action append_host {
     if (!have_addr) {
+      free(host.addr);
       host.addr = NULL;
     }
     policy->nhost++;
     policy->hosts = realloc(policy->hosts, sizeof(Hostent) * policy->nhost);
     policy->hosts[policy->nhost - 1] = host;
+    host.addr = NULL;
   }
 
   action set_rr {
@@ -68,7 +74,7 @@ static int have_addr;
   }
 
   action error {
-    Fatal("policy syntax error around:\"%s\"\n", fpc);
+    LogFatal("policy syntax error around:\"%s\"\n", fpc);
   }
   
   ws = (' ');
@@ -87,7 +93,13 @@ static int have_addr;
 
 %% write data;
 
-int ParsePolicy(Policy *policy, const char *p) {
+Policy *ParsePolicy(const char *p) {
+  Policy *policy = malloc(sizeof(Policy));
+
+  memset(policy, 0, sizeof(Policy));
+  host.addr = NULL;
+  %% write init;
+
   policy->p = p;
   policy->pe = p + strlen(p);
   policy->eof = policy->pe;
@@ -95,17 +107,19 @@ int ParsePolicy(Policy *policy, const char *p) {
   %% write exec;
 
   if (policy->cs == %%{write error;}%%) {
-    return -1;
-  } else if (policy ->cs < %%{write first_final;}%%) {
-    return 1;
+    free(policy);
+    return NULL;
   }
 
-  return 0;
+  return policy;
 }
 
-int InitPolicy(Policy *policy) {
-  memset(policy, 0, sizeof(Policy));
-  %% write init;
-  return 0;
+void FreePolicy(Policy *policy) {
+  int i;
+  free(policy->listen.addr);
+  for (i = 0; i < policy->nhost; i++) {
+    free(policy->hosts[i].addr);
+  }
+  free(policy->hosts);
+  free(policy);
 }
-

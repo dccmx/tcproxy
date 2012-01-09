@@ -26,8 +26,8 @@ typedef struct Policy {
   int cs;
 } Policy;
 
-int InitPolicy(Policy *policy);
-int ParsePolicy(Policy *policy, const char *str);
+void FreePolicy(Policy *policy);
+Policy *ParsePolicy(const char *str);
 
 #endif /* _POLICY_H_ */
 

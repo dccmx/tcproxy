@@ -89,43 +89,52 @@ void Daemonize() {
 BufferList *AllocBufferList(int n) {
   BufferList *blist = malloc(sizeof(BufferList));
   BufferListNode *buf = malloc(sizeof(BufferListNode));
-  BufferListNode *pre = buf;
+  BufferListNode *pre;
   int i;
 
   buf->size = 0;
   buf->next = NULL;
 
   blist->head = buf;
-  blist->head = blist->cur_node = buf;
+  pre = blist->head = blist->cur_node = buf;
 
   for (i = 1; i < n; i++) {
     buf = malloc(sizeof(BufferListNode));
     buf->size = 0;
     buf->next = NULL;
     pre->next = buf;
+    pre = buf;
   }
 
   blist->tail = buf;
+  blist->cur_pos = 0;
 
   return blist;
 }
 
-void FreeBufferList(BufferList *head) {
+void FreeBufferList(BufferList *blist) {
+  BufferListNode *cur = blist->head;
+  while (cur != NULL) {
+    blist->head = cur->next;
+    free(cur);
+    cur = blist->head;
+  }
+  free(blist);
 }
 
 char *BufferListGetSpace(BufferList *blist, int *len) {
-  if (blist->cur_node == blist->tail && blist->cur_node->size == BUFFER_SIZE) {
+  if (blist->cur_node == blist->tail && blist->cur_node->size == BUFFER_CHUNK_SIZE) {
     *len = 0;
     return NULL;
   }
-  *len = BUFFER_SIZE - blist->cur_node->size;
+  *len = BUFFER_CHUNK_SIZE - blist->cur_node->size;
   return blist->cur_node->data + blist->cur_node->size;
 }
 
 void BufferListPush(BufferList *blist, int len) {
   blist->cur_node->size += len;
   LogDebug("cur head %p cur node %p data %d", blist->head, blist->cur_node, blist->head->size - blist->cur_pos);
-  if (blist->cur_node->size == BUFFER_SIZE && blist->cur_node != blist->tail) {
+  if (blist->cur_node->size == BUFFER_CHUNK_SIZE && blist->cur_node != blist->tail) {
     blist->cur_node = blist->cur_node->next;
   }
 }
@@ -136,6 +145,9 @@ char *BufferListGetData(BufferList *blist, int *len) {
     return NULL;
   }
   *len = blist->head->size - blist->cur_pos;
+  if (*len <= 0) {
+    exit(-1);
+  }
   return blist->head->data + blist->cur_pos;
 }
 
@@ -146,9 +158,9 @@ void BufferListPop(BufferList *blist, int len) {
     blist->head = blist->head->next;
     blist->tail->next = cur;
     cur->size = 0;
-    blist->cur_pos = 0;
     cur->next = NULL;
     if (blist->head == NULL) blist->head = blist->tail;
+    blist->cur_pos = 0;
   }
 }
 

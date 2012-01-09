@@ -1,6 +1,8 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
+#define BUFFER_CHUNK_SIZE 32768
+
 typedef enum LogLevel {
   kNone = 0,
   kFatal,
@@ -37,20 +39,22 @@ typedef enum LogLevel {
   exit(EXIT_FAILURE);\
 }while(0)
 
+#ifdef DEBUG
 #define LogDebug(s...) do {\
   LogInternal(kDebug, s);\
   LogPrint(kDebug, " [%s]", __PRETTY_FUNCTION__);\
   LogPrint(kDebug, "\n"); \
 }while(0)
+#else
+#define LogDebug(s...)
+#endif
 
 void InitLogger(LogLevel level, const char *filename);
 void LogInternal(LogLevel level, const char *fmt, ...);
 void LogPrint(LogLevel level, const char *fmt, ...);
 
-#define BUFFER_SIZE 32768
-
 typedef struct BufferListNode {
-  char data[BUFFER_SIZE];
+  char data[BUFFER_CHUNK_SIZE];
   int size;
   struct BufferListNode *next;
 } BufferListNode;

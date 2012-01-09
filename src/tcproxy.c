@@ -11,9 +11,9 @@
 #include "ae.h"
 #include "anet.h"
 
-#define MAX_WRITE_PER_EVENT 1024*1024
+#define MAX_WRITE_PER_EVENT 1024*1024*1024
 
-Policy  policy;
+Policy *policy;
 static int run_daemonize = 0;
 static char error_[1024];
 aeEventLoop *el;
@@ -46,13 +46,11 @@ void Usage() {
 }
 
 void ParseArgs(int argc, char **argv) {
-  int i, j, ret = -1;
+  int i, j;
   const char *logfile = "stderr";
   int loglevel = kError;
 
   InitLogger(loglevel, NULL);
-
-  InitPolicy(&policy);
 
   for (i = 1; i < argc; i++) {
     if (argv[i][0] == '-') {
@@ -75,13 +73,13 @@ void ParseArgs(int argc, char **argv) {
         LogFatal("unknow option %s\n", argv[i]);
       }
     } else {
-      ret = ParsePolicy(&policy, argv[i]);
+      policy = ParsePolicy(argv[i]);
     }
   }
 
   InitLogger(loglevel, logfile);
 
-  if (ret) {
+  if (policy == NULL) {
     LogFatal("policy not valid");
   }
 }
@@ -98,7 +96,7 @@ void RemoteDown(Client *r) {
 
 Client *AllocRemote(Client *c) {
   Client *r = malloc(sizeof(Client));
-  int fd = anetTcpNonBlockConnect(error_, policy.hosts[0].addr, policy.hosts[0].port);
+  int fd = anetTcpNonBlockConnect(error_, policy->hosts[0].addr, policy->hosts[0].port);
 
   if (r == NULL || fd == -1) return NULL;
   LogDebug("connect remote fd %d", fd);
@@ -120,10 +118,12 @@ Client *AllocRemote(Client *c) {
 
 void FreeClient(Client *c) {
   if (c == NULL) return;
+  LogDebug("free client %d", c->fd);
   aeDeleteFileEvent(el, c->fd, AE_READABLE);
   aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
   close(c->fd);
   FreeRemote(c->remote);
+  FreeBufferList(c->blist);
   free(c);
 }
 
@@ -154,9 +154,11 @@ Client *AllocClient(int fd) {
 }
 
 void FreeRemote(Client *r) {
+  LogDebug("free remote");
   aeDeleteFileEvent(el, r->fd, AE_READABLE);
   aeDeleteFileEvent(el, r->fd, AE_WRITABLE);
   close(r->fd);
+  FreeBufferList(r->blist);
   free(r);
 }
 
@@ -164,12 +166,16 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
   Client *c = (Client*)privdata;
   int len, nwritten = 0, totwritten = 0;
   char *buf;
-  
-  LogDebug("send outcome");
 
+  buf = BufferListGetData(c->blist, &len);
+  if (buf == NULL) {
+    LogDebug("delete write event");
+    aeDeleteFileEvent(el, fd, AE_WRITABLE);
+  }
+  
   while (1) {
     buf = BufferListGetData(c->blist, &len);
-    LogDebug("buflen to write %p %d fd %d", c->blist, len, fd);
+    LogDebug("buf to write %p %d fd %d", c->blist, len, fd);
     if (buf == NULL) break;
     nwritten = write(fd, buf, len);
     if (nwritten <= 0) break;
@@ -194,11 +200,6 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
       c->OnError(c);
       return;
     }
-  }
-
-  if (BufferListGetData(c->blist, &len) == NULL) {
-    LogDebug("delete write event");
-    aeDeleteFileEvent(el, fd, AE_WRITABLE);
   }
 }
 
@@ -236,10 +237,7 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     if (nread) {
-      LogDebug("push data %p %d", r->blist, nread);
       BufferListPush(r->blist, nread);
-      buf = BufferListGetData(r->blist, &len);
-      LogDebug("after push %p %d", r->blist, len);
       SetWriteEvent(r);
     } else {
       break;
@@ -286,7 +284,7 @@ int main(int argc, char **argv) {
   sigaction(SIGTERM, &sig_action, NULL);
   sigaction(SIGPIPE, &sig_action, NULL);
 
-  listen_fd = anetTcpServer(error_, policy.listen.port, policy.listen.addr);
+  listen_fd = anetTcpServer(error_, policy->listen.port, policy->listen.addr);
 
   el = aeCreateEventLoop(1024);
 
@@ -294,13 +292,17 @@ int main(int argc, char **argv) {
     LogFatal("listen failed");
   }
 
-  LogInfo("listenning on %s:%d", (policy.listen.addr? policy.listen.addr : "any"), policy.listen.port);
-  for (i = 0; i < policy.nhost; i++) {
-    if (policy.hosts[i].addr == NULL) policy.hosts[i].addr = "127.0.0.1";
-    LogInfo("proxy to %s:%d", policy.hosts[i].addr, policy.hosts[i].port);
+  LogInfo("listenning on %s:%d", (policy->listen.addr? policy->listen.addr : "any"), policy->listen.port);
+  for (i = 0; i < policy->nhost; i++) {
+    if (policy->hosts[i].addr == NULL) policy->hosts[i].addr = strdup("127.0.0.1");
+    LogInfo("proxy to %s:%d", policy->hosts[i].addr, policy->hosts[i].port);
   }
 
   aeMain(el);
+
+  aeDeleteEventLoop(el);
+
+  FreePolicy(policy);
 
   return 0;
 }
