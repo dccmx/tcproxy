@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 
 #include "policy.h"
 #include "util.h"
@@ -178,7 +179,7 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
     buf = BufferListGetData(c->blist, &len);
     LogDebug("buf to write %p %d fd %d", c->blist, len, fd);
     if (buf == NULL) break;
-    nwritten = write(fd, buf, len);
+    nwritten = send(fd, buf, len, MSG_DONTWAIT);
     if (nwritten <= 0) break;
 
     totwritten += nwritten;
@@ -222,7 +223,7 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
   while (1) {
     buf = BufferListGetSpace(r->blist, &len);
     if (buf == NULL) break;
-    nread = read(fd, buf, len);
+    nread = recv(fd, buf, len, 0);
     if (nread == -1) {
       if (errno == EAGAIN) {
         // no data
