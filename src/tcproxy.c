@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <sys/resource.h>
 
 #include "policy.h"
 #include "util.h"
@@ -303,6 +304,12 @@ int main(int argc, char **argv) {
   aeDeleteEventLoop(el);
 
   FreePolicy(policy);
+
+  struct rusage self_ru;
+  getrusage(RUSAGE_SELF, &self_ru);
+  fprintf(stderr, "sys: %.2f user: %.2f", (float)self_ru.ru_stime.tv_sec+(float)self_ru.ru_stime.tv_usec/1000000,
+    (float)self_ru.ru_utime.tv_sec+(float)self_ru.ru_utime.tv_usec/1000000);
+
 
   return 0;
 }

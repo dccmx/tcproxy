@@ -1,7 +1,7 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
-#define BUFFER_CHUNK_SIZE 32768
+#define BUFFER_CHUNK_SIZE 1024*1024*2
 
 typedef enum LogLevel {
   kNone = 0,
