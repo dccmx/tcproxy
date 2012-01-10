@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <pthread.h>
 
 #include "policy.h"
 #include "util.h"
@@ -15,27 +16,28 @@
 
 #define MAX_WRITE_PER_EVENT 1024*1024*1024
 
-Policy *policy;
+static Policy *policy;
 static int run_daemonize = 0;
 static char error_[1024];
-aeEventLoop *el;
+static aeEventLoop *els[4];
+static pthread_t thread[4];
+static int listen_fd, num_thread = 1;
 
 typedef struct Client {
   int fd;
   struct Client *remote;
   BufferList *blist;
-  void (*OnError)(struct Client *c);
-  void (*OnRemoteDown)(struct Client *c);
+  void (*OnError)(aeEventLoop *el, struct Client *c);
+  void (*OnRemoteDown)(aeEventLoop *el, struct Client *c);
 } Client;
 
-void FreeRemote(Client *c);
+void FreeRemote(aeEventLoop *el, Client *c);
 void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask);
 
 void Usage() {
   printf("usage:\n"
       "  tcproxy [options] \"proxy policy\"\n"
       "options:\n"
-      "  -l file    specify log file\n"
       "  -d         run in background\n"
       "  -v         show detailed log\n"
       "  --version  show version and exit\n"
@@ -49,10 +51,9 @@ void Usage() {
 
 void ParseArgs(int argc, char **argv) {
   int i, j;
-  const char *logfile = "stderr";
   int loglevel = kError;
 
-  InitLogger(loglevel, NULL);
+  InitLogger(loglevel);
 
   for (i = 1; i < argc; i++) {
     if (argv[i][0] == '-') {
@@ -63,9 +64,6 @@ void ParseArgs(int argc, char **argv) {
         exit(EXIT_SUCCESS);
       } else if (!strcmp(argv[i], "-d")) {
         run_daemonize = 1;
-      } else if (!strcmp(argv[i], "-l")) {
-        if (++i >= argc) LogFatal("file name must be specified");
-        logfile = argv[i];
       } else if (!strncmp(argv[i], "-v", 2)) {
         for (j = 1; argv[i][j] != '\0'; j++) {
           if (argv[i][j] == 'v') loglevel++;
@@ -79,7 +77,7 @@ void ParseArgs(int argc, char **argv) {
     }
   }
 
-  InitLogger(loglevel, logfile);
+  InitLogger(loglevel);
 
   if (policy == NULL) {
     LogFatal("policy not valid");
@@ -87,16 +85,14 @@ void ParseArgs(int argc, char **argv) {
 }
 
 void SignalHandler(int signo) {
-  if (signo == SIGINT || signo == SIGTERM) {
-    el->stop = 1;
-  }
+  exit(0);
 }
 
-void RemoteDown(Client *r) {
-  r->remote->OnRemoteDown(r->remote);
+void RemoteDown(aeEventLoop *el, Client *r) {
+  r->remote->OnRemoteDown(el, r->remote);
 }
 
-Client *AllocRemote(Client *c) {
+Client *AllocRemote(aeEventLoop *el, Client *c) {
   Client *r = malloc(sizeof(Client));
   int fd = anetTcpNonBlockConnect(error_, policy->hosts[0].addr, policy->hosts[0].port);
 
@@ -118,21 +114,21 @@ Client *AllocRemote(Client *c) {
   return r;
 }
 
-void FreeClient(Client *c) {
+void FreeClient(aeEventLoop *el, Client *c) {
   if (c == NULL) return;
   LogDebug("free client %d", c->fd);
   aeDeleteFileEvent(el, c->fd, AE_READABLE);
   aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
   close(c->fd);
-  FreeRemote(c->remote);
+  FreeRemote(el, c->remote);
   FreeBufferList(c->blist);
   free(c);
 }
 
-void ReAllocRemote(Client *c) {
+void ReAllocRemote(aeEventLoop *el, Client *c) {
 }
 
-Client *AllocClient(int fd) {
+Client *AllocClient(aeEventLoop *el, int fd) {
   Client *c = malloc(sizeof(Client));
   if (c == NULL) return NULL;
 
@@ -141,7 +137,7 @@ Client *AllocClient(int fd) {
 
   c->fd = fd;
   c->blist = AllocBufferList(3);
-  c->remote = AllocRemote(c);
+  c->remote = AllocRemote(el, c);
   c->OnError = FreeClient;
   c->OnRemoteDown = ReAllocRemote;
   if (c->remote == NULL) {
@@ -155,7 +151,7 @@ Client *AllocClient(int fd) {
   return c;
 }
 
-void FreeRemote(Client *r) {
+void FreeRemote(aeEventLoop *el, Client *r) {
   LogDebug("free remote");
   aeDeleteFileEvent(el, r->fd, AE_READABLE);
   aeDeleteFileEvent(el, r->fd, AE_WRITABLE);
@@ -199,13 +195,13 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
       nwritten = 0;
     } else {
       LogDebug("write error %s", strerror(errno));
-      c->OnError(c);
+      c->OnError(el, c);
       return;
     }
   }
 }
 
-int SetWriteEvent(Client *c) {
+int SetWriteEvent(aeEventLoop *el, Client *c) {
   if (aeCreateFileEvent(el, c->fd, AE_WRITABLE, SendOutcome, c) == AE_ERR) {
     LogError("Set write event failed");
     return -1;
@@ -240,7 +236,7 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     if (nread) {
       BufferListPush(r->blist, nread);
-      SetWriteEvent(r);
+      SetWriteEvent(el, r);
     } else {
       break;
     }
@@ -249,7 +245,7 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
   return;
 
 ERROR:
-  c->OnError(c);
+  c->OnError(el, c);
 }
 
 void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -263,16 +259,47 @@ void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
   }
   LogInfo("Accepted %s:%d", cip, cport);
 
-  Client *c = AllocClient(cfd);
+  Client *c = AllocClient(el, cfd);
 
   if (c == NULL || aeCreateFileEvent(el, cfd, AE_READABLE, ReadIncome, c) == AE_ERR) {
-    LogError("create failed");
-    FreeClient(c);
+    LogError("create event failed");
+    FreeClient(el, c);
   }
 }
 
+static void *ThreadMain(void *arg) {
+  aeEventLoop *el = (aeEventLoop*)arg;
+
+  if (listen_fd < 0 && aeCreateFileEvent(el, listen_fd, AE_READABLE, AcceptTcpHandler, NULL) == AE_ERR) {
+    LogFatal("listen failed: %s", strerror(errno));
+  }
+
+  LogDebug("thread go");
+
+  aeMain(el);
+
+  LogDebug("thread done");
+
+  return NULL;
+}
+
+pthread_t CreateThread(aeEventLoop *el) {
+  pthread_t thread;
+  pthread_attr_t attr;
+  int ret;
+
+  pthread_attr_init(&attr);
+
+  if ((ret = pthread_create(&thread, &attr, ThreadMain, (void*)el)) != 0) {
+    fprintf(stderr, "Can't create thread: %s\n", strerror(ret));
+    exit(1);
+  }
+
+  return thread;
+}
+
 int main(int argc, char **argv) {
-  int i, listen_fd;
+  int i;
   struct sigaction sig_action;
 
   ParseArgs(argc, argv);
@@ -288,21 +315,22 @@ int main(int argc, char **argv) {
 
   listen_fd = anetTcpServer(error_, policy->listen.port, policy->listen.addr);
 
-  el = aeCreateEventLoop(1024);
-
-  if (listen_fd > 0 && aeCreateFileEvent(el, listen_fd, AE_READABLE, AcceptTcpHandler, NULL) == AE_ERR) {
-    LogFatal("listen failed");
-  }
-
   LogInfo("listenning on %s:%d", (policy->listen.addr? policy->listen.addr : "any"), policy->listen.port);
   for (i = 0; i < policy->nhost; i++) {
     if (policy->hosts[i].addr == NULL) policy->hosts[i].addr = strdup("127.0.0.1");
     LogInfo("proxy to %s:%d", policy->hosts[i].addr, policy->hosts[i].port);
   }
 
-  aeMain(el);
+  for (i = 0; i < num_thread; i++) {
+    els[i] = aeCreateEventLoop(1024);
+    thread[i] = CreateThread(els[i]);
+  }
 
-  aeDeleteEventLoop(el);
+  for (i = 0; i < num_thread; i++) {
+    void *ret;
+    pthread_join(thread[i], &ret);
+    aeDeleteEventLoop(els[i]);
+  }
 
   FreePolicy(policy);
 

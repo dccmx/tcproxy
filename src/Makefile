@@ -18,7 +18,7 @@ QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR
 QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
 
 LDFLAGS   += 
-LIBS      += 
+LIBS      += -lpthread
 
 all: $(PROGNAME)
 
@@ -26,7 +26,7 @@ all: $(PROGNAME)
 	$(QUIET_CC)$(CC) -c $(CFLAGS) $(CFLAGS_OPT) $(DEBUG) $(COMPILE_TIME) $<
 
 $(PROGNAME): $(OBJS)
-	$(QUIET_LINK)$(CC) -o $(PROGNAME) $(CFLAGS_OPT) $(DEBUG) $(OBJS) $(CCLINK)
+	$(QUIET_LINK)$(CC) -o $(PROGNAME) $(CFLAGS_OPT) $(DEBUG) $(OBJS) $(LIBS) $(CCLINK)
 	@echo
 	@echo "Make Complete. See README for how to use."
 	@echo

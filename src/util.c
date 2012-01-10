@@ -11,7 +11,6 @@
 #include "util.h"
 
 static LogLevel log_level = kDebug;
-static FILE *log_file = NULL;
 static char now_str[sizeof("2011/11/11 11:11:11")];
 static const char *LevelName[] = {
   "NONE",
@@ -42,32 +41,22 @@ void LogPrint(LogLevel level, const char *fmt, ...) {
   va_list  args;
   if (level > log_level) return;
   va_start(args, fmt);
-  if (log_file) vfprintf(log_file, fmt, args);
+  vfprintf(stderr, fmt, args);
   va_end(args);
-  fflush(log_file);
 }
 
 void LogInternal(LogLevel level, const char *fmt, ...) {
   va_list  args;
   if (level > log_level) return;
   UpdateTime();
-  if (log_file) fprintf(log_file, "%s [%s] ", now_str, LevelName[level]);
+  fprintf(stderr, "%s [%s] ", now_str, LevelName[level]);
   va_start(args, fmt);
-  if (log_file) vfprintf(log_file, fmt, args);
+  vfprintf(stderr, fmt, args);
   va_end(args);
-  fflush(log_file);
 }
 
-void InitLogger(LogLevel level, const char *filename) {
+void InitLogger(LogLevel level) {
   log_level = level;
-
-  if (filename == NULL || strcmp(filename, "stderr") == 0 || strcmp(filename, "") == 0) {
-    log_file = stderr;
-  } else if (strcmp(filename, "stdout") == 0) {
-    log_file = stdout;
-  } else {
-    log_file = fopen(filename, "a+");
-  }
 }
 
 

@@ -39,17 +39,17 @@ typedef enum LogLevel {
   exit(EXIT_FAILURE);\
 }while(0)
 
-#ifdef DEBUG
+#ifdef NDEBUG
+#define LogDebug(s...)
+#else
 #define LogDebug(s...) do {\
   LogInternal(kDebug, s);\
   LogPrint(kDebug, " [%s]", __PRETTY_FUNCTION__);\
   LogPrint(kDebug, "\n"); \
 }while(0)
-#else
-#define LogDebug(s...)
 #endif
 
-void InitLogger(LogLevel level, const char *filename);
+void InitLogger(LogLevel level);
 void LogInternal(LogLevel level, const char *fmt, ...);
 void LogPrint(LogLevel level, const char *fmt, ...);
 
