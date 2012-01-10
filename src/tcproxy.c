@@ -16,12 +16,13 @@
 
 #define MAX_WRITE_PER_EVENT 1024*1024*1024
 
+static pthread_mutex_t accept_lock;
 static Policy *policy;
 static int run_daemonize = 0;
 static char error_[1024];
 static aeEventLoop *els[4];
 static pthread_t thread[4];
-static int listen_fd, num_thread = 1;
+static int listen_fd, num_thread = 4;
 
 typedef struct Client {
   int fd;
@@ -64,6 +65,8 @@ void ParseArgs(int argc, char **argv) {
         exit(EXIT_SUCCESS);
       } else if (!strcmp(argv[i], "-d")) {
         run_daemonize = 1;
+      } else if (!strcmp(argv[i], "-t")) {
+        num_thread = atoi(argv[++i]);
       } else if (!strncmp(argv[i], "-v", 2)) {
         for (j = 1; argv[i][j] != '\0'; j++) {
           if (argv[i][j] == 'v') loglevel++;
@@ -252,7 +255,13 @@ void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
   int cport, cfd;
   char cip[128];
 
+  if (pthread_mutex_trylock(&accept_lock)) {
+    return;
+  }
+
   cfd = anetTcpAccept(error_, fd, cip, &cport);
+
+  pthread_mutex_unlock(&accept_lock);
   if (cfd == AE_ERR) {
     LogError("Accept client connection failed: %s", error_);
     return;
@@ -270,7 +279,7 @@ void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 static void *ThreadMain(void *arg) {
   aeEventLoop *el = (aeEventLoop*)arg;
 
-  if (listen_fd < 0 && aeCreateFileEvent(el, listen_fd, AE_READABLE, AcceptTcpHandler, NULL) == AE_ERR) {
+  if (aeCreateFileEvent(el, listen_fd, AE_READABLE, AcceptTcpHandler, NULL) == AE_ERR) {
     LogFatal("listen failed: %s", strerror(errno));
   }
 
@@ -320,6 +329,8 @@ int main(int argc, char **argv) {
     if (policy->hosts[i].addr == NULL) policy->hosts[i].addr = strdup("127.0.0.1");
     LogInfo("proxy to %s:%d", policy->hosts[i].addr, policy->hosts[i].port);
   }
+
+  pthread_mutex_init(&accept_lock, NULL);
 
   for (i = 0; i < num_thread; i++) {
     els[i] = aeCreateEventLoop(1024);
