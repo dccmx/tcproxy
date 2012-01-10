@@ -6,6 +6,7 @@ OBJS   = tcproxy.o ae.o util.o policy.o zmalloc.o anet.o
 CFLAGS_GEN = -Wall -Werror -g $(CFLAGS) -DVERSION=\"$(VERSION)\"
 CFLAGS_DBG = -ggdb $(CFLAGS_GEN)
 CFLAGS_OPT = -O3 -Wno-format $(CFLAGS_GEN)
+DEBUG ?=
 
 CCCOLOR="\033[34m"
 LINKCOLOR="\033[34;1m"
