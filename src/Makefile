@@ -1,9 +1,8 @@
 PROGNAME   = tcproxy
-VERSION    = 0.9
 
 OBJS   = tcproxy.o ae.o util.o policy.o zmalloc.o anet.o
 
-CFLAGS_GEN = -Wall -Werror -g $(CFLAGS) -DVERSION=\"$(VERSION)\"
+CFLAGS_GEN = -Wall -Werror -g $(CFLAGS)
 CFLAGS_DBG = -ggdb $(CFLAGS_GEN)
 CFLAGS_OPT = -O3 -Wno-format $(CFLAGS_GEN)
 DEBUG ?=
@@ -36,4 +35,3 @@ $(PROGNAME): $(OBJS)
 
 clean:
 	rm -f $(PROGNAME) core core.[1-9][0-9]* *.o memcheck.out callgrind.out.[1-9][0-9]* massif.out.[1-9][0-9]*
-

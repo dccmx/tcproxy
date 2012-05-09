@@ -14,6 +14,7 @@
 #include "anet.h"
 
 #define MAX_WRITE_PER_EVENT 1024*1024*1024
+#define VERSION "0.9"
 
 Policy *policy;
 static int run_daemonize = 0;
@@ -130,6 +131,7 @@ void FreeClient(Client *c) {
 }
 
 void ReAllocRemote(Client *c) {
+  // TODO
 }
 
 Client *AllocClient(int fd) {
@@ -143,7 +145,8 @@ Client *AllocClient(int fd) {
   c->blist = AllocBufferList(3);
   c->remote = AllocRemote(c);
   c->OnError = FreeClient;
-  c->OnRemoteDown = ReAllocRemote;
+  // c->OnRemoteDown = ReAllocRemote;
+  c->OnRemoteDown = FreeClient;  // freeclient temprarily before hot switch done
   if (c->remote == NULL) {
     close(fd);
     free(c);
@@ -285,6 +288,14 @@ int main(int argc, char **argv) {
   sigaction(SIGINT, &sig_action, NULL);
   sigaction(SIGTERM, &sig_action, NULL);
   sigaction(SIGPIPE, &sig_action, NULL);
+
+  if (!strcmp(policy->listen.addr, "any")) {
+    free(policy->listen.addr);
+    policy->listen.addr = strdup("0.0.0.0");
+  } else if (!strcmp(policy->listen.addr, "localhost")) {
+    free(policy->listen.addr);
+    policy->listen.addr = strdup("127.0.0.1");
+  }
 
   listen_fd = anetTcpServer(error_, policy->listen.port, policy->listen.addr);
 
