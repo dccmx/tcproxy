@@ -62,8 +62,8 @@ typedef struct BufferListNode {
 typedef struct BufferList {
   BufferListNode *head;
   BufferListNode *tail;
-  int cur_pos;
-  BufferListNode *cur_node;
+  int read_pos;
+  BufferListNode *write_node;
 } BufferList;
 
 BufferList *AllocBufferList(int n);

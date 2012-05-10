@@ -96,7 +96,7 @@ BufferList *AllocBufferList(int n) {
   buf->next = NULL;
 
   blist->head = buf;
-  pre = blist->head = blist->cur_node = buf;
+  pre = blist->head = blist->write_node = buf;
 
   for (i = 1; i < n; i++) {
     buf = malloc(sizeof(BufferListNode));
@@ -107,7 +107,8 @@ BufferList *AllocBufferList(int n) {
   }
 
   blist->tail = buf;
-  blist->cur_pos = 0;
+
+  blist->read_pos = 0;
 
   return blist;
 }
@@ -122,45 +123,57 @@ void FreeBufferList(BufferList *blist) {
   free(blist);
 }
 
+// get free space from current write node
 char *BufferListGetSpace(BufferList *blist, int *len) {
-  if (blist->cur_node == blist->tail && blist->cur_node->size == BUFFER_CHUNK_SIZE) {
+  if (blist->write_node == blist->tail && blist->write_node->size == BUFFER_CHUNK_SIZE) {
     *len = 0;
+    LogDebug("tail full");
     return NULL;
   }
-  *len = BUFFER_CHUNK_SIZE - blist->cur_node->size;
-  return blist->cur_node->data + blist->cur_node->size;
+  *len = BUFFER_CHUNK_SIZE - blist->write_node->size;
+  return blist->write_node->data + blist->write_node->size;
 }
 
+// push data into buffer
 void BufferListPush(BufferList *blist, int len) {
-  blist->cur_node->size += len;
-  LogDebug("cur head %p cur node %p data %d", blist->head, blist->cur_node, blist->head->size - blist->cur_pos);
-  if (blist->cur_node->size == BUFFER_CHUNK_SIZE && blist->cur_node != blist->tail) {
-    blist->cur_node = blist->cur_node->next;
+  blist->write_node->size += len;
+  LogDebug("head %p tail %p cur %p data %d", blist->head, blist->tail, blist->write_node, blist->head->size - blist->read_pos);
+  if (blist->write_node->size == BUFFER_CHUNK_SIZE && blist->write_node != blist->tail) {
+    // move to next chunk
+    blist->write_node = blist->write_node->next;
   }
 }
 
+// always get data from head
 char *BufferListGetData(BufferList *blist, int *len) {
-  if (blist->head == blist->cur_node && blist->cur_pos == blist->head->size) {
+  if (blist->head == blist->write_node && blist->read_pos == blist->head->size) {
     *len = 0;
+    LogDebug("head empty");
     return NULL;
   }
-  *len = blist->head->size - blist->cur_pos;
-  if (*len <= 0) {
-    exit(-1);
-  }
-  return blist->head->data + blist->cur_pos;
+  *len = blist->head->size - blist->read_pos;
+  return blist->head->data + blist->read_pos;
 }
 
+// pop data out from buffer
 void BufferListPop(BufferList *blist, int len) {
-  blist->cur_pos += len;
-  if (blist->cur_pos == blist->head->size && blist->head != blist->cur_node) {
+  blist->read_pos += len;
+  LogDebug("head %p tail %p cur %p data %d", blist->head, blist->tail, blist->write_node, blist->head->size - blist->read_pos);
+  if (blist->read_pos == blist->head->size && blist->head != blist->write_node) {
+    // head empty, and head is not the node we are writing into, move to tail
     BufferListNode *cur = blist->head;
     blist->head = blist->head->next;
     blist->tail->next = cur;
+    blist->tail = cur;
     cur->size = 0;
     cur->next = NULL;
-    if (blist->head == NULL) blist->head = blist->tail;
-    blist->cur_pos = 0;
+    blist->read_pos = 0;
+    if (blist->head == NULL) {
+      // there is only one chunk in buffer list
+      LogDebug("head null");
+      exit(0);
+      blist->head = blist->tail;
+    }
   }
+  // else leave it there, further get data will return NULL
 }
-

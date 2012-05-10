@@ -168,6 +168,7 @@ void FreeRemote(Client *r) {
 }
 
 void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
+  LogDebug("SendOutcome");
   Client *c = (Client*)privdata;
   int len, nwritten = 0, totwritten = 0;
   char *buf;
@@ -180,7 +181,6 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
   
   while (1) {
     buf = BufferListGetData(c->blist, &len);
-    LogDebug("buf to write %p %d fd %d", c->blist, len, fd);
     if (buf == NULL) break;
     nwritten = send(fd, buf, len, MSG_DONTWAIT);
     if (nwritten <= 0) break;
@@ -217,14 +217,16 @@ int SetWriteEvent(Client *c) {
 }
 
 void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
+  LogDebug("read in come");
   Client *c = (Client*)privdata;
   Client *r = c->remote;
   char *buf;
-  int len, nread;
+  int len, nread = 0;
 
-  LogDebug("c fd %d, r fd %d", c->fd, r->fd);
   while (1) {
     buf = BufferListGetSpace(r->blist, &len);
+    if (buf == NULL) LogDebug("no space");
+    if (buf == NULL) exit(-1);
     if (buf == NULL) break;
     nread = recv(fd, buf, len, 0);
     if (nread == -1) {
@@ -244,6 +246,7 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (nread) {
       BufferListPush(r->blist, nread);
       SetWriteEvent(r);
+      LogDebug("set write");
     } else {
       break;
     }
