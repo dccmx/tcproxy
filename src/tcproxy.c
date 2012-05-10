@@ -226,7 +226,6 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
   while (1) {
     buf = BufferListGetSpace(r->blist, &len);
     if (buf == NULL) LogDebug("no space");
-    if (buf == NULL) exit(-1);
     if (buf == NULL) break;
     nread = recv(fd, buf, len, 0);
     if (nread == -1) {
