@@ -303,8 +303,8 @@ int main(int argc, char **argv) {
 
   el = aeCreateEventLoop(1024);
 
-  if (listen_fd > 0 && aeCreateFileEvent(el, listen_fd, AE_READABLE, AcceptTcpHandler, NULL) == AE_ERR) {
-    LogFatal("listen failed");
+  if (listen_fd < 0 || aeCreateFileEvent(el, listen_fd, AE_READABLE, AcceptTcpHandler, NULL) == AE_ERR) {
+    LogFatal("listen failed: %s", strerror(errno));
   }
 
   LogInfo("listenning on %s:%d", (policy->listen.addr? policy->listen.addr : "any"), policy->listen.port);
