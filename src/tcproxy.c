@@ -14,6 +14,7 @@
 #include "anet.h"
 
 #define MAX_WRITE_PER_EVENT 1024*1024*1024
+#define CLIENT_CLOSE_AFTER_SENT 0x01
 #define VERSION "0.9"
 
 Policy *policy;
@@ -23,8 +24,11 @@ aeEventLoop *el;
 
 typedef struct Client {
   int fd;
+  int flags;
+
   struct Client *remote;
   BufferList *blist;
+
   void (*OnError)(struct Client *c);
   void (*OnRemoteDown)(struct Client *c);
 } Client;
@@ -99,6 +103,7 @@ void RemoteDown(Client *r) {
 
 Client *AllocRemote(Client *c) {
   Client *r = malloc(sizeof(Client));
+  r->flags = 0;
   int fd = anetTcpNonBlockConnect(error_, policy->hosts[0].addr, policy->hosts[0].port);
 
   if (r == NULL || fd == -1) return NULL;
@@ -130,12 +135,17 @@ void FreeClient(Client *c) {
   free(c);
 }
 
+void CloseAfterSent(Client *c) {
+  c->flags |= CLIENT_CLOSE_AFTER_SENT;
+}
+
 void ReAllocRemote(Client *c) {
   // TODO
 }
 
 Client *AllocClient(int fd) {
   Client *c = malloc(sizeof(Client));
+  c->flags = 0;
   if (c == NULL) return NULL;
 
   anetNonBlock(NULL, fd);
@@ -146,7 +156,7 @@ Client *AllocClient(int fd) {
   c->remote = AllocRemote(c);
   c->OnError = FreeClient;
   // c->OnRemoteDown = ReAllocRemote;
-  c->OnRemoteDown = FreeClient;  // freeclient temprarily before hot switch done
+  c->OnRemoteDown = CloseAfterSent;  // freeclient temprarily before hot switch done
   if (c->remote == NULL) {
     close(fd);
     free(c);
@@ -181,7 +191,14 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
   
   while (1) {
     buf = BufferListGetData(c->blist, &len);
-    if (buf == NULL) break;
+    if (buf == NULL) {
+      // no data to send
+      if (c->flags & CLIENT_CLOSE_AFTER_SENT) {
+        FreeClient(c);
+        return;
+      }
+      break;
+    }
     nwritten = send(fd, buf, len, MSG_DONTWAIT);
     if (nwritten <= 0) break;
 
