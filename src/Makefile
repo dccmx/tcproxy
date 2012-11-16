@@ -28,7 +28,7 @@ all: $(PROGNAME)
 $(PROGNAME): $(OBJS)
 	$(QUIET_LINK)$(CC) -o $(PROGNAME) $(CFLAGS_OPT) $(DEBUG) $(OBJS) $(CCLINK)
 	@echo
-	@echo "Make Complete. See README for how to use."
+	@echo "Make Complete. Read README for how to use."
 	@echo
 	@echo "Having problems with it? Send complains and bugs to dccmx@dccmx.com"
 	@echo

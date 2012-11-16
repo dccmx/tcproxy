@@ -136,7 +136,13 @@ void FreeClient(Client *c) {
 }
 
 void CloseAfterSent(Client *c) {
-  c->flags |= CLIENT_CLOSE_AFTER_SENT;
+  int len;
+  if (BufferListGetData(c->blist, &len) == NULL) {
+    // no data remains to be sent, close this client
+    FreeClient(c);
+  } else {
+    c->flags |= CLIENT_CLOSE_AFTER_SENT;
+  }
 }
 
 void ReAllocRemote(Client *c) {
@@ -163,7 +169,7 @@ Client *AllocClient(int fd) {
     return NULL;
   }
 
-  LogDebug("new client %d %d", c->fd, c->remote->fd);
+  LogDebug("New client fd:%d remotefd:%d", c->fd, c->remote->fd);
 
   return c;
 }
@@ -242,7 +248,6 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
 
   while (1) {
     buf = BufferListGetSpace(r->blist, &len);
-    if (buf == NULL) LogDebug("no space");
     if (buf == NULL) break;
     nread = recv(fd, buf, len, 0);
     if (nread == -1) {
@@ -283,12 +288,12 @@ void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     LogError("Accept client connection failed: %s", error_);
     return;
   }
-  LogInfo("Accepted %s:%d", cip, cport);
+  LogInfo("Accepted client from %s:%d", cip, cport);
 
   Client *c = AllocClient(cfd);
 
   if (c == NULL || aeCreateFileEvent(el, cfd, AE_READABLE, ReadIncome, c) == AE_ERR) {
-    LogError("create failed");
+    LogError("Create event failed");
     FreeClient(c);
   }
 }
@@ -318,7 +323,7 @@ int main(int argc, char **argv) {
 
   listen_fd = anetTcpServer(error_, policy->listen.port, policy->listen.addr);
 
-  el = aeCreateEventLoop(1024);
+  el = aeCreateEventLoop(65536);
 
   if (listen_fd < 0 || aeCreateFileEvent(el, listen_fd, AE_READABLE, AcceptTcpHandler, NULL) == AE_ERR) {
     LogFatal("listen failed: %s", strerror(errno));
@@ -338,4 +343,3 @@ int main(int argc, char **argv) {
 
   return 0;
 }
-
