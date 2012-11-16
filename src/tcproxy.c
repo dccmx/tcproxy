@@ -15,7 +15,7 @@
 
 #define MAX_WRITE_PER_EVENT 1024*1024*1024
 #define CLIENT_CLOSE_AFTER_SENT 0x01
-#define VERSION "0.9.1"
+#define VERSION "0.9.2"
 
 Policy *policy;
 static int run_daemonize = 0;
