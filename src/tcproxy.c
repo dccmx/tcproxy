@@ -308,7 +308,7 @@ int main(int argc, char **argv) {
   sigaction(SIGTERM, &sig_action, NULL);
   sigaction(SIGPIPE, &sig_action, NULL);
 
-  if (!strcmp(policy->listen.addr, "any")) {
+  if ((policy->listen.addr == NULL) || !strcmp(policy->listen.addr, "any")) {
     free(policy->listen.addr);
     policy->listen.addr = strdup("0.0.0.0");
   } else if (!strcmp(policy->listen.addr, "localhost")) {
