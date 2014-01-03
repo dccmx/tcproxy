@@ -66,13 +66,13 @@ typedef struct BufferList {
   BufferListNode *write_node;
 } BufferList;
 
-BufferList *AllocBufferList(int n);
+BufferList *AllocBufferList(const int n);
 
 void FreeBufferList(BufferList *blist);
 char *BufferListGetData(BufferList *blist, int *len);
-char *BufferListGetSpace(BufferList *blist, int *len);
-void BufferListPop(BufferList *blist, int len);
-void BufferListPush(BufferList *blist, int len);
+char *BufferListGetWriteBuffer(BufferList *blist, int *len);
+void BufferListPop(BufferList *blist, const int len);
+void BufferListPush(BufferList *blist, const int len);
 
 void Daemonize();
 
