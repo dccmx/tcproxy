@@ -9,6 +9,7 @@
 typedef struct Hostent {
   char *addr;
   int port;
+  int down;
 } Hostent;
 
 typedef struct Policy {

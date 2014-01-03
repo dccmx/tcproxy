@@ -168,7 +168,9 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
         if (anetNonBlock(err,s) != ANET_OK)
             return ANET_ERR;
     }
+
     if (connect(s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
+
         if (errno == EINPROGRESS &&
             flags & ANET_CONNECT_NONBLOCK)
             return s;

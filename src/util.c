@@ -34,7 +34,7 @@ static void UpdateTime() {
   struct tm tm;
   localtime_r(&now, &tm);
   sprintf(now_str, "%04d/%02d/%02d %02d:%02d:%02d",
-      1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday, 
+      1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday,
       tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 

@@ -76,7 +76,7 @@ static int have_addr;
   action error {
     LogFatal("policy syntax error around:\"%s\"\n", fpc);
   }
-  
+
   ws = (' ');
   port = (digit {1,5});
   dottedip = (digit {1,3} '.' digit {1,3} '.' digit {1,3} '.' digit {1,3});

@@ -5,7 +5,7 @@ OBJS   = tcproxy.o ae.o util.o policy.o zmalloc.o anet.o
 CFLAGS_GEN = -Wall -Werror -g $(CFLAGS)
 CFLAGS_DBG = -ggdb $(CFLAGS_GEN)
 CFLAGS_OPT = -O3 -Wno-format $(CFLAGS_GEN)
-DEBUG ?=
+DEBUG ?= -DDEBUG
 
 CCCOLOR="\033[34m"
 LINKCOLOR="\033[34;1m"
@@ -17,8 +17,8 @@ ENDCOLOR="\033[0m"
 QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR);
 QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
 
-LDFLAGS   += 
-LIBS      += 
+LDFLAGS   +=
+LIBS      +=
 
 all: $(PROGNAME)
 
