@@ -1,6 +1,6 @@
 PROGNAME   = tcproxy
 
-OBJS   = ae.o anet.o buffer_list.o client.o connection_pool.o log.o policy.o tcproxy.o zmalloc.o
+OBJS   = adlist.o ae.o anet.o buffer_list.o client.o log.o policy.o tcproxy.o zmalloc.o
 
 CFLAGS_GEN = -Wall -Werror -g $(CFLAGS)
 CFLAGS_DBG = -ggdb $(CFLAGS_GEN)

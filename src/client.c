@@ -3,10 +3,59 @@
 #define MAX_WRITE_PER_EVENT 1024*1024*1024
 #define CONNECTION_IN_PROGRESS -1
 #define CONNECTION_ERROR -2
+static list** free_clients = NULL;
+static int num_hosts = 0;
+static int rr_last_server = -1;
 
 static void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask);
 static void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask);
 static void ConnectServerCompleted(aeEventLoop *el, int fd, void *privdata, int mask);
+
+static Client* CreateNewClient(const int fd);
+static Client *AllocClient();
+
+static void ReleaseFreeClient(Client *c) {
+  if (c == NULL) return;
+  if (c->fd > 0) {
+    aeDeleteFileEvent(el, c->fd, AE_READABLE);
+    aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+    close(c->fd);
+  }
+  FreeBufferList(c->blist);
+  free(c);
+}
+
+static void ReleaseFreeClientAndRemote(void *value) {
+  Client *c = (Client*) value;
+  if (c == NULL) return;
+  ReleaseFreeClient(c->remote);
+  ReleaseFreeClient(c);
+}
+
+void InitFreeClientsList(const int nhost) {
+  free_clients = (list**) zmalloc(nhost * sizeof(list*));
+  if (free_clients == NULL)
+    LogFatal("no memory");
+  for (int i = 0; i < nhost; ++i) {
+    free_clients[i] = listCreate();
+    if (free_clients[i] == NULL)
+      LogFatal("no memory");
+  }
+  num_hosts = nhost;
+}
+
+void ReleaseFreeClientsList() {
+  for (int i = 0; i < num_hosts; ++i) {
+    listIter *it = listGetIterator(free_clients[i], AL_START_HEAD);
+    listNode *node;
+    while ((node = listNext(it)) != NULL) {
+      ReleaseFreeClientAndRemote(listNodeValue(node));
+    }
+    listReleaseIterator(it);
+    listRelease(free_clients[i]);
+  }
+  zfree(free_clients);
+}
 
 static unsigned int IPHash(const unsigned char *buf, int len) {
   unsigned int hash = 89;
@@ -16,139 +65,73 @@ static unsigned int IPHash(const unsigned char *buf, int len) {
   return hash;
 }
 
-/* Assign a server according to the policy
- * returns the fd on success or -1 on error
+/* Assign a server according to the type
+ * type may be PROXY_RR or PROXY_HASH
  */
-static int AssignServer(Client* c, const int cfd) {
-  int retries = 0;
-  int fd;
+static Hostent* AssignServer(const int cfd, int type) {
   long which = 0;
-  int type = policy->type;
-  while (retries++ <= policy->nhost) {
+  int retries = 0;
+  while (retries++ <= policy->nhost + 20) {
     switch (type) {
       case PROXY_RR: {
-        static int last = -1;
-        which = (++last) % policy->nhost;
+        which = (++rr_last_server) % policy->nhost;
         break;
       }
       case PROXY_HASH: {
         struct sockaddr_in cliaddr;
         socklen_t clilen = sizeof(cliaddr);
         getpeername(cfd, (struct sockaddr*)&cliaddr, &clilen);
-        which = IPHash((unsigned char *) &cliaddr.sin_addr.s_addr + 2, 2) % policy->nhost;
+        which = IPHash((unsigned char *) &cliaddr.sin_addr.s_addr, 4) % policy->nhost;
         break;
       }
       default:
         LogFatal("error proxy type");
     }
 
-    if (policy->hosts[which].down) {
+    if (!policy->hosts[which].down) {
+      return &policy->hosts[which];
+    }
+    type = PROXY_RR;
+  }
+
+  return NULL;
+}
+
+static int ConnectServer(Client *c) {
+  int retries = 0;
+  int type = policy->type;
+  int fd;
+  do {
+    Hostent *host = AssignServer(c->fd, type);
+    if (host == NULL) break;
+
+    fd = anetTcpNonBlockConnect(error_, host->addr, host->port);
+    if (fd == ANET_ERR) {
+      LogError("error connect to remote %s:%s, %s", host->addr,
+               host->port, error_);
+      /* server down, try other server */
+      host->down = 1;
       type = PROXY_RR;
       continue;
     }
-    fd = anetTcpNonBlockConnect(error_, policy->hosts[which].addr, policy->hosts[which].port);
-    if (fd == ANET_ERR) {
-      LogError("error connect to remote %s:%s, %s", policy->hosts[which].addr,
-               policy->hosts[which].port, error_);
-      /* server down, try other server */
-      policy->hosts[which].down = 1;
-      type = PROXY_RR;
-    } else {
-      if (errno == EINPROGRESS) {
-        LogDebug("EINPROGRESS: check the connect result later");
-        /* set policy->hosts[which].down = 1 if it is unreachable */
-        c->remote = (Client*) &policy->hosts[which];
-        aeCreateFileEvent(el, fd, AE_WRITABLE, ConnectServerCompleted, c);
-        return CONNECTION_IN_PROGRESS;
-      }
-      LogDebug("assign server %d to client %d", which, cfd);
-      return fd;
-    }
-  }
 
-  LogError("all servers are down, do something!");
+    c->host = host;
+    c->remote->fd = fd;
+    anetNonBlock(NULL, fd);
+    anetTcpNoDelay(NULL, fd);
+
+    if (errno == EINPROGRESS) {
+      LogDebug("EINPROGRESS: check the connect result later");
+      aeCreateFileEvent(el, fd, AE_WRITABLE, ConnectServerCompleted, c);
+      return CONNECTION_IN_PROGRESS;
+    }
+    LogDebug("assign server %d to client %d", host->index, fd);
+    return fd;
+  } while (++retries <= policy->nhost + 20);
+
+  LogError("can not connect to any server");
   return CONNECTION_ERROR;
 }
-
-Client *CreateClient(const int fd, const int type) {
-  Client *r = malloc(sizeof(Client));
-  if (r == NULL) {
-    LogError("create %s failed: no memory", type & CLIENT_TYPE_CLIENT ? "client" : "server");
-    close(fd);
-    return NULL;
-  }
-
-  anetNonBlock(NULL, fd);
-  anetTcpNoDelay(NULL, fd);
-  r->fd = fd;
-  r->flags = 0;
-  r->blist = AllocBufferList(3);
-  r->remote = NULL;
-
-  switch (type) {
-    case CLIENT_TYPE_CLIENT: {
-      r->type = CLIENT_TYPE_CLIENT;
-      int sfd = AssignServer(r, fd);
-      switch (sfd) {
-        case CONNECTION_ERROR: {
-          FreeClient(r);
-          LogError("create client error: create server error");
-          return NULL;
-        }
-        case CONNECTION_IN_PROGRESS: {
-          return r;
-        }
-        default: {
-          r->remote = CreateClient(sfd, CLIENT_TYPE_SERVER);
-          break;
-        }
-      }
-      break;
-    }
-
-    case CLIENT_TYPE_SERVER: {
-      r->type = CLIENT_TYPE_SERVER;
-      break;
-    }
-
-    default: {
-      LogFatal("error client type");
-    }
-  }
-
-  if (aeCreateFileEvent(el, r->fd, AE_READABLE, ReadIncome, r) == AE_ERR) {
-    FreeClient(r);
-    LogError("create %s error: create file event error",
-             type & CLIENT_TYPE_CLIENT ? "client" : "server");
-    return NULL;
-  }
-  return r;
-}
-
-void FreeClient(Client *c) {
-  if (c == NULL) return;
-  if (c->type & CLIENT_TYPE_SERVER) {
-    LogDebug("free server %d", c->fd);
-  } else {
-    FreeClient(c->remote);
-    LogDebug("free client %d", c->fd);
-  }
-
-  aeDeleteFileEvent(el, c->fd, AE_READABLE);
-  aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
-  close(c->fd);
-  FreeBufferList(c->blist);
-  free(c);
-}
-
-static int SetWriteEvent(Client *c) {
-  if (aeCreateFileEvent(el, c->fd, AE_WRITABLE, SendOutcome, c) == AE_ERR) {
-    LogError("Set write event failed");
-    return -1;
-  }
-  return 0;
-}
-
 
 static void ConnectServerCompleted(aeEventLoop *el, int fd, void *privdata, int mask) {
   NOTUSED(mask);
@@ -158,25 +141,114 @@ static void ConnectServerCompleted(aeEventLoop *el, int fd, void *privdata, int 
   socklen_t optlen = sizeof(int);
   getsockopt(fd, SOL_SOCKET, SO_ERROR, &opt, &optlen);
 
-  Hostent *host = (Hostent*)c->remote;
-  c->remote = NULL;
   if (!opt) {
-    host->down = 0;
-    c->remote = CreateClient(fd, CLIENT_TYPE_SERVER);
-    if (c->remote == NULL) {
-      LogError("create remote error: free client %d", c->fd);
-      FreeClient(c);
+    c->host->down = 0;
+    if (aeCreateFileEvent(el, c->fd, AE_READABLE, ReadIncome, c) == AE_ERR ||
+        aeCreateFileEvent(el, c->remote->fd, AE_READABLE, ReadIncome, c->remote) == AE_ERR) {
+      LogError("create file event error :%s, free client %d", strerror(errno), c->fd);
+      ReleaseFreeClientAndRemote(c);
       return;
     }
-    c->remote->remote = c;
-    if (aeCreateFileEvent(el, c->fd, AE_READABLE, ReadIncome, c) == AE_ERR) {
-      FreeClient(c);
-      LogError("create file event error, free client %d", c->fd);
-    }
   } else {
-    host->down = 1;
-    FreeClient(c);
+    c->host->down = 1;
+    ReleaseFreeClientAndRemote(c);
   }
+}
+
+static Client *AllocClient() {
+  Client *r = malloc(sizeof(Client));
+  if (r == NULL) return NULL;
+  r->blist = AllocBufferList(3);
+  if (r->blist == NULL) {
+    free(r);
+    return NULL;
+  }
+  return r;
+}
+
+static Client* InitClient(Client *c, const int fd) {
+  c->type = CLIENT_TYPE_CLIENT;
+  c->remote->type = CLIENT_TYPE_SERVER;
+  c->fd = fd;
+  c->flags = 0;
+  anetNonBlock(NULL, fd);
+  anetTcpNoDelay(NULL, fd);
+  if (c->remote->fd < 0) {
+    int sfd = ConnectServer(c);
+    switch (sfd) {
+      case CONNECTION_ERROR: {
+        return NULL;
+      }
+      case CONNECTION_IN_PROGRESS: {
+        return c;
+      }
+      default: {
+        c->remote->fd = sfd;
+      }
+    }
+  }
+
+  if (aeCreateFileEvent(el, c->fd, AE_READABLE, ReadIncome, c) == AE_ERR ||
+      aeCreateFileEvent(el, c->remote->fd, AE_READABLE, ReadIncome, c->remote) == AE_ERR) {
+    LogError("initialize client error: create file event error");
+    return NULL;
+  }
+  return c;
+}
+
+static Client* CreateNewClient(const int fd) {
+  LogDebug("create new client");
+  Client *c = AllocClient();
+  Client *r = AllocClient();
+  c->remote = r;
+  r->remote = c;
+  r->fd = -1;
+  if (InitClient(c, fd) == NULL) {
+    ReleaseFreeClientAndRemote(c);
+    return NULL;
+  }
+  return c;
+}
+
+Client *CreateClient(const int fd) {
+  Hostent *host = AssignServer(fd, policy->type);
+  if (host == NULL) return NULL;
+  listNode *node = listFirst(free_clients[host->index]);
+  if (node == NULL) {
+    return CreateNewClient(fd);
+  }
+
+  Client *c = listNodeValue(node);
+  listDelNode(free_clients[host->index], node);
+
+  if (InitClient(c, fd) == NULL) {
+    ReleaseFreeClientAndRemote(c);
+    return NULL;
+  }
+  return c;
+}
+
+void FreeClient(Client *c) {
+  if (c == NULL || c->fd < 0) return;
+  aeDeleteFileEvent(el, c->fd, AE_READABLE);
+  aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+  close(c->fd);
+  c->fd = -1;
+  /* TODO: avoid new client receiving data for old client */
+  if (c->remote->fd > 0)
+    aeDeleteFileEvent(el, c->remote->fd, AE_WRITABLE);
+  ResetBufferList(c->blist);
+  ResetBufferList(c->remote->blist);
+
+  listAddNodeTail(free_clients[c->host->index], c);
+}
+
+static int SetWriteEvent(Client *c) {
+  if (aeCreateFileEvent(el, c->fd, AE_WRITABLE, SendOutcome, c) == AE_ERR) {
+    LogError("Set write event failed");
+    return -1;
+  }
+  return 0;
 }
 
 void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -191,19 +263,40 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
 
   while (1) {
     buf = BufferListGetWriteBuffer(r->blist, &len);
-    if (buf == NULL) return;
+    if (buf == NULL) break;
     nread = recv(fd, buf, len, 0);
     if (nread == -1) {
-      if (errno != EAGAIN) {
-        FreeClient(c->type & CLIENT_TYPE_CLIENT ? c : r);
+      if (errno == EAGAIN) {
+        return;
       }
+      LogInfo("error recv from %d", c->fd);
+
+      if (c->type & CLIENT_TYPE_SERVER) {
+        r->host->down = 1;
+        aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+        aeDeleteFileEvent(el, c->fd, AE_READABLE);
+        close(c->fd);
+        c->fd = -1;
+        FreeClient(r);
+        return;
+      }
+      FreeClient(c);
       return;
     }
 
     if (nread == 0) {
       // connection closed
       LogInfo("client closed connection");
-      FreeClient(c->type & CLIENT_TYPE_CLIENT ? c : r);
+      if (c->type & CLIENT_TYPE_SERVER) {
+        r->host->down = 1;
+        aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+        aeDeleteFileEvent(el, c->fd, AE_READABLE);
+        close(c->fd);
+        c->fd = -1;
+        FreeClient(r);
+        return;
+      }
+      FreeClient(c);
       return;
     }
 
@@ -211,6 +304,7 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
     SetWriteEvent(r);
     LogDebug("set write");
   }
+  LogDebug("read income end");
 }
 
 void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -248,6 +342,15 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
 
   if (nwritten == -1 && errno != EAGAIN) {
     LogError("write to client error %s", strerror(errno));
-    FreeClient(c->type & CLIENT_TYPE_CLIENT ? c : c->remote);
+    if (c->type & CLIENT_TYPE_SERVER) {
+      c->remote->host->down = 1;
+      aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+      aeDeleteFileEvent(el, c->fd, AE_READABLE);
+      close(c->fd);
+      c->fd = -1;
+      FreeClient(c->remote);
+    } else {
+      FreeClient(c);
+    }
   }
 }

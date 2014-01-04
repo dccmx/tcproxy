@@ -18,6 +18,7 @@ typedef struct BufferList {
 
 BufferList *AllocBufferList(const int n);
 void FreeBufferList(BufferList *blist);
+void ResetBufferList(BufferList *blist);
 
 char *BufferListGetData(BufferList *blist, int *len);
 void BufferListPop(BufferList *blist, const int len);

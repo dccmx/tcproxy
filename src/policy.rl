@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "policy.h"
+#include "log.h"
 
 static Hostent host;
 static int addr_p;

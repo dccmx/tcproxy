@@ -4,26 +4,29 @@
 
 BufferList *AllocBufferList(const int n) {
   BufferList *blist = malloc(sizeof(BufferList));
-  BufferListNode *buf = malloc(sizeof(BufferListNode));
-  BufferListNode *pre;
-  int i;
+  if (blist == NULL)
+    return NULL;
 
-  buf->size = 0;
-  buf->next = NULL;
-
-  blist->head = buf;
-  pre = blist->head = blist->write_node = buf;
-
-  for (i = 1; i < n; i++) {
-    buf = malloc(sizeof(BufferListNode));
-    buf->size = 0;
-    buf->next = NULL;
-    pre->next = buf;
-    pre = buf;
+  void *buf = malloc(n*sizeof(BufferListNode));
+  if (buf == NULL) {
+    free(blist);
+    return NULL;
   }
 
-  blist->tail = buf;
+  BufferListNode *pre;
+  pre = blist->head  = blist->write_node = (BufferListNode*)buf;
 
+  pre->size = 0;
+  pre->next = NULL;
+
+  for (int i = 1; i < n; i++) {
+    (pre+1)->size = 0;
+    (pre+1)->next = NULL;
+    pre->next = pre+1;
+    ++pre;
+  }
+
+  blist->tail = pre;
   blist->read_pos = 0;
 
   return blist;
@@ -32,12 +35,18 @@ BufferList *AllocBufferList(const int n) {
 void FreeBufferList(BufferList *blist) {
   if (blist == NULL) return;
   BufferListNode *cur = blist->head;
-  while (cur != NULL) {
-    blist->head = cur->next;
-    free(cur);
-    cur = blist->head;
-  }
+  free(cur);
   free(blist);
+}
+
+void ResetBufferList(BufferList *blist) {
+  blist->read_pos = 0;
+  blist->write_node = blist->head;
+  BufferListNode *p = blist->head;
+  while (p) {
+    p->size = 0;
+    p = p->next;
+  }
 }
 
 // always get data from head

@@ -14,12 +14,12 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 
+#include "adlist.h"
 #include "ae.h"
 #include "anet.h"
 #include "buffer_list.h"
 #include "client.h"
 #include "config.h"
-#include "connection_pool.h"
 #include "log.h"
 #include "policy.h"
 #include "zmalloc.h"

@@ -131,7 +131,7 @@ void AcceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     return;
   }
 
-  if (CreateClient(cfd, CLIENT_TYPE_CLIENT))
+  if (CreateClient(cfd))
     LogInfo("Accepted client from %s:%d", cip, cport);
 }
 
@@ -167,16 +167,21 @@ int main(int argc, char **argv) {
 
   LogInfo("listenning on %s:%d", (policy->listen.addr? policy->listen.addr : "any"), policy->listen.port);
   for (i = 0; i < policy->nhost; i++) {
-    policy->hosts[i].down = 0;
     if (policy->hosts[i].addr == NULL) policy->hosts[i].addr = strdup("127.0.0.1");
     LogInfo("proxy to %s:%d", policy->hosts[i].addr, policy->hosts[i].port);
+    policy->hosts[i].down = 0;
+    policy->hosts[i].index = i;
   }
+
+  InitFreeClientsList(policy->nhost);
 
   long long timeid = aeCreateTimeEvent(el, 10000, Cron, NULL, NULL);
 
   aeMain(el);
 
   aeDeleteTimeEvent(el, timeid);
+
+  ReleaseFreeClientsList();
   aeDeleteEventLoop(el);
 
   FreePolicy(policy);

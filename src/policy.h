@@ -1,7 +1,6 @@
 #ifndef _POLICY_H_
 #define _POLICY_H_
 
-#include "util.h"
 
 #define PROXY_RR 0
 #define PROXY_HASH 1
@@ -10,6 +9,7 @@ typedef struct Hostent {
   char *addr;
   int port;
   int down;
+  int index;  // 0,1,..., nhost - 1
 } Hostent;
 
 typedef struct Policy {

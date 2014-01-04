@@ -2,6 +2,7 @@
 #define __TCPROXY_CLIENT_H_
 
 struct BufferList;
+struct Hostent;
 
 #define CLIENT_TYPE_CLIENT 1
 #define CLIENT_TYPE_SERVER 1 << 1
@@ -10,11 +11,16 @@ typedef struct Client {
   int fd;
   int flags;
   int type;
+
+  struct Hostent* host;
   struct Client *remote;
   struct BufferList *blist;
 } Client;
 
-Client *CreateClient(const int fd, const int type);
+void InitFreeClientsList(const int nhost);
+void ReleaseFreeClientsList();
+
+Client *CreateClient(const int fd);
 void FreeClient(Client *c);
 
 #endif //__TCPROXY_CLIENT_H_
