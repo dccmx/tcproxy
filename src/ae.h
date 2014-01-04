@@ -30,8 +30,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __AE_H__
-#define __AE_H__
+#ifndef __TCPROXY_AE_H__
+#define __TCPROXY_AE_H__
 
 #define AE_OK 0
 #define AE_ERR -1
@@ -114,4 +114,4 @@ void aeMain(aeEventLoop *eventLoop);
 char *aeGetApiName(void);
 void aeSetBeforeSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *beforesleep);
 
-#endif
+#endif // __TCPROXY_AE_H_

@@ -11,25 +11,23 @@ static void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask);
 static void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask);
 static void ConnectServerCompleted(aeEventLoop *el, int fd, void *privdata, int mask);
 
-static Client* CreateNewClient(const int fd);
+static Client *CreateNewClient(const int fd);
 static Client *AllocClient();
 
-static void ReleaseFreeClient(Client *c) {
-  if (c == NULL) return;
-  if (c->fd > 0) {
-    aeDeleteFileEvent(el, c->fd, AE_READABLE);
-    aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
-    close(c->fd);
+static void CloseClient(Client *value) {
+  if (value == NULL) return;
+  Client *c = value;
+  for (int i = 0 ; i < 2; ++i) {
+    if (c->fd > 0) {
+      aeDeleteFileEvent(el, c->fd, AE_READABLE);
+      aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+      close(c->fd);
+    }
+    FreeBufferList(c->blist);
+    c = c->remote;
   }
-  FreeBufferList(c->blist);
+  free(c->remote);
   free(c);
-}
-
-static void ReleaseFreeClientAndRemote(void *value) {
-  Client *c = (Client*) value;
-  if (c == NULL) return;
-  ReleaseFreeClient(c->remote);
-  ReleaseFreeClient(c);
 }
 
 void InitFreeClientsList(const int nhost) {
@@ -49,7 +47,7 @@ void ReleaseFreeClientsList() {
     listIter *it = listGetIterator(free_clients[i], AL_START_HEAD);
     listNode *node;
     while ((node = listNext(it)) != NULL) {
-      ReleaseFreeClientAndRemote(listNodeValue(node));
+      CloseClient(listNodeValue(node));
     }
     listReleaseIterator(it);
     listRelease(free_clients[i]);
@@ -65,9 +63,6 @@ static unsigned int IPHash(const unsigned char *buf, int len) {
   return hash;
 }
 
-/* Assign a server according to the type
- * type may be PROXY_RR or PROXY_HASH
- */
 static Hostent* AssignServer(const int cfd, int type) {
   long which = 0;
   int retries = 0;
@@ -115,7 +110,7 @@ static int ConnectServer(Client *c) {
       continue;
     }
 
-    c->host = host;
+    c->host = c->remote->host = host;
     c->remote->fd = fd;
     anetNonBlock(NULL, fd);
     anetTcpNoDelay(NULL, fd);
@@ -146,34 +141,53 @@ static void ConnectServerCompleted(aeEventLoop *el, int fd, void *privdata, int 
     if (aeCreateFileEvent(el, c->fd, AE_READABLE, ReadIncome, c) == AE_ERR ||
         aeCreateFileEvent(el, c->remote->fd, AE_READABLE, ReadIncome, c->remote) == AE_ERR) {
       LogError("create file event error :%s, free client %d", strerror(errno), c->fd);
-      ReleaseFreeClientAndRemote(c);
+      CloseClient(c);
       return;
     }
   } else {
     c->host->down = 1;
-    ReleaseFreeClientAndRemote(c);
+    CloseClient(c);
   }
 }
 
 static Client *AllocClient() {
+  Client *c = malloc(sizeof(Client));
+  if (c == NULL) return NULL;
+
+  c->blist = AllocBufferList(3);
+  if (c->blist == NULL) {
+    FreeBufferList(c->blist);
+    return NULL;
+  }
+
   Client *r = malloc(sizeof(Client));
-  if (r == NULL) return NULL;
+  if (r == NULL) {
+    FreeBufferList(c->blist);
+    free(c);
+    return NULL;
+  }
+
   r->blist = AllocBufferList(3);
   if (r->blist == NULL) {
+    FreeBufferList(c->blist);
+    free(c);
     free(r);
     return NULL;
   }
-  return r;
+  c->remote = r;
+  r->remote = c;
+  return c;
 }
 
 static Client* InitClient(Client *c, const int fd) {
   c->type = CLIENT_TYPE_CLIENT;
   c->remote->type = CLIENT_TYPE_SERVER;
   c->fd = fd;
-  c->flags = 0;
+
   anetNonBlock(NULL, fd);
   anetTcpNoDelay(NULL, fd);
   if (c->remote->fd < 0) {
+    c->host = c->remote->host = NULL;
     int sfd = ConnectServer(c);
     switch (sfd) {
       case CONNECTION_ERROR: {
@@ -199,12 +213,11 @@ static Client* InitClient(Client *c, const int fd) {
 static Client* CreateNewClient(const int fd) {
   LogDebug("create new client");
   Client *c = AllocClient();
-  Client *r = AllocClient();
-  c->remote = r;
-  r->remote = c;
-  r->fd = -1;
+  if (c == NULL) return NULL;
+
+  c->remote->fd = -1;
   if (InitClient(c, fd) == NULL) {
-    ReleaseFreeClientAndRemote(c);
+    CloseClient(c);
     return NULL;
   }
   return c;
@@ -222,13 +235,13 @@ Client *CreateClient(const int fd) {
   listDelNode(free_clients[host->index], node);
 
   if (InitClient(c, fd) == NULL) {
-    ReleaseFreeClientAndRemote(c);
+    CloseClient(c);
     return NULL;
   }
   return c;
 }
 
-void FreeClient(Client *c) {
+static void PutClientInFreeList(Client *c) {
   if (c == NULL || c->fd < 0) return;
   aeDeleteFileEvent(el, c->fd, AE_READABLE);
   aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
@@ -269,42 +282,34 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
       if (errno == EAGAIN) {
         return;
       }
-      LogInfo("error recv from %d", c->fd);
-
-      if (c->type & CLIENT_TYPE_SERVER) {
-        r->host->down = 1;
-        aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
-        aeDeleteFileEvent(el, c->fd, AE_READABLE);
-        close(c->fd);
-        c->fd = -1;
-        FreeClient(r);
-        return;
-      }
-      FreeClient(c);
-      return;
+      LogError("error recv from %d", c->fd);
+      goto ERROR;
     }
 
     if (nread == 0) {
       // connection closed
       LogInfo("client closed connection");
-      if (c->type & CLIENT_TYPE_SERVER) {
-        r->host->down = 1;
-        aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
-        aeDeleteFileEvent(el, c->fd, AE_READABLE);
-        close(c->fd);
-        c->fd = -1;
-        FreeClient(r);
-        return;
-      }
-      FreeClient(c);
-      return;
+      goto ERROR;
     }
 
+    if ((c->type & CLIENT_TYPE_SERVER) && r->fd < 0)
+      continue;
     BufferListPush(r->blist, nread);
     SetWriteEvent(r);
-    LogDebug("set write");
+    LogDebug("set write event");
   }
-  LogDebug("read income end");
+
+ERROR:
+  if (c->type & CLIENT_TYPE_SERVER) {
+    r->host->down = 1;
+    aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
+    aeDeleteFileEvent(el, c->fd, AE_READABLE);
+    close(c->fd);
+    c->fd = -1;
+    PutClientInFreeList(r);
+  } else {
+    PutClientInFreeList(c);
+  }
 }
 
 void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -348,9 +353,9 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
       aeDeleteFileEvent(el, c->fd, AE_READABLE);
       close(c->fd);
       c->fd = -1;
-      FreeClient(c->remote);
+      PutClientInFreeList(c->remote);
     } else {
-      FreeClient(c);
+      PutClientInFreeList(c);
     }
   }
 }

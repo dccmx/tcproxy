@@ -28,8 +28,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ANET_H
-#define ANET_H
+#ifndef __TCPROXY_ANET_H
+#define __TCPROXY_ANET_H
 
 #define ANET_OK 0
 #define ANET_ERR -1
@@ -55,4 +55,4 @@ int anetTcpNoDelay(char *err, int fd);
 int anetTcpKeepAlive(char *err, int fd);
 int anetPeerToString(int fd, char *ip, int *port);
 
-#endif
+#endif  //__TCPROXY_ANET_H_

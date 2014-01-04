@@ -1,5 +1,5 @@
-#ifndef __CONFIG_H
-#define __CONFIG_H
+#ifndef __TCPROXY_CONFIG_H
+#define __TCPROXY_CONFIG_H
 
 #ifdef __APPLE__
 #include <AvailabilityMacros.h>
@@ -87,4 +87,4 @@
 #error "Undefined or invalid BYTE_ORDER"
 #endif
 
-#endif
+#endif  //__TCPROXY_CONFIG_H_

@@ -28,8 +28,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __ADLIST_H__
-#define __ADLIST_H__
+#ifndef __TCPROXY_ADLIST_H__
+#define __TCPROXY_ADLIST_H__
 
 /* Node, List, and Iterator are the only data structures used currently. */
 
@@ -90,4 +90,4 @@ void listRotate(list *list);
 #define AL_START_HEAD 0
 #define AL_START_TAIL 1
 
-#endif /* __ADLIST_H__ */
+#endif /* __TCPROXY_ADLIST_H__ */

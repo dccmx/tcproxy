@@ -9,7 +9,6 @@ struct Hostent;
 
 typedef struct Client {
   int fd;
-  int flags;
   int type;
 
   struct Hostent* host;
@@ -21,6 +20,5 @@ void InitFreeClientsList(const int nhost);
 void ReleaseFreeClientsList();
 
 Client *CreateClient(const int fd);
-void FreeClient(Client *c);
 
 #endif //__TCPROXY_CLIENT_H_

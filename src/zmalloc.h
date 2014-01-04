@@ -28,8 +28,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __ZMALLOC_H
-#define __ZMALLOC_H
+#ifndef __TCPROXY_ZMALLOC_H
+#define __TCPROXY_ZMALLOC_H
 
 /* Double expansion needed for stringification of macro values. */
 #define __xstr(s) __str(s)
@@ -81,4 +81,4 @@ void zlibc_free(void *ptr);
 size_t zmalloc_size(void *ptr);
 #endif
 
-#endif /* __ZMALLOC_H */
+#endif /* __TCPROXY_ZMALLOC_H */

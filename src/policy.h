@@ -1,5 +1,5 @@
-#ifndef _POLICY_H_
-#define _POLICY_H_
+#ifndef __TCPROXY_POLICY_H_
+#define __TCPROXY_POLICY_H_
 
 
 #define PROXY_RR 0
@@ -30,5 +30,5 @@ typedef struct Policy {
 void FreePolicy(Policy *policy);
 Policy *ParsePolicy(const char *str);
 
-#endif /* _POLICY_H_ */
+#endif /* __TCPROXY_POLICY_H_ */
 
