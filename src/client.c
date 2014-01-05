@@ -241,19 +241,70 @@ Client *CreateClient(const int fd) {
   return c;
 }
 
+static void PreConnectServerCompleted(aeEventLoop *el, int fd, void *privdata, int mask) {
+  NOTUSED(mask);
+  Client *c = (Client*)privdata;
+  aeDeleteFileEvent(el, fd, AE_WRITABLE);
+  int opt;
+  socklen_t optlen = sizeof(int);
+  getsockopt(fd, SOL_SOCKET, SO_ERROR, &opt, &optlen);
+
+  listAddNodeTail(free_clients[c->host->index], c);
+  if (!opt) {
+    c->host->down = 0;
+    anetNonBlock(NULL, fd);
+    anetTcpNoDelay(NULL, fd);
+    c->remote->fd = fd;
+  } else {
+    c->host->down = 1;
+    close(c->remote->fd);
+    c->remote->fd = -1;
+  }
+}
+
+static void PreConnectServer(Client *c) {
+  Hostent *host = c->host;
+  int fd = anetTcpNonBlockConnect(error_, host->addr, host->port);
+  if (fd > 0 && errno == EINPROGRESS) {
+    LogDebug("EINPROGRESS: check the connect result later");
+    aeCreateFileEvent(el, fd, AE_WRITABLE, PreConnectServerCompleted, c);
+    return;
+  }
+
+  listAddNodeTail(free_clients[c->host->index], c);
+
+  if (fd == ANET_ERR) {
+    LogError("error connect to remote %s:%s, %s", host->addr,
+             host->port, error_);
+    host->down = 1;
+    return;
+  }
+
+  anetNonBlock(NULL, fd);
+  anetTcpNoDelay(NULL, fd);
+  c->remote->fd = fd;
+}
+
 static void PutClientInFreeList(Client *c) {
   if (c == NULL || c->fd < 0) return;
+  if (c->host == NULL || c->host->down) {
+    CloseClient(c);
+    return;
+  }
+
   aeDeleteFileEvent(el, c->fd, AE_READABLE);
   aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
   close(c->fd);
   c->fd = -1;
-  /* TODO: avoid new client receiving data for old client */
-  if (c->remote->fd > 0)
-    aeDeleteFileEvent(el, c->remote->fd, AE_WRITABLE);
+
+  aeDeleteFileEvent(el, c->remote->fd, AE_WRITABLE);
+  aeDeleteFileEvent(el, c->remote->fd, AE_READABLE);
+  close(c->remote->fd);
+  c->remote->fd = -1;
+
   ResetBufferList(c->blist);
   ResetBufferList(c->remote->blist);
-
-  listAddNodeTail(free_clients[c->host->index], c);
+  PreConnectServer(c);
 }
 
 static int SetWriteEvent(Client *c) {
@@ -292,8 +343,6 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
       goto ERROR;
     }
 
-    if ((c->type & CLIENT_TYPE_SERVER) && r->fd < 0)
-      continue;
     BufferListPush(r->blist, nread);
     SetWriteEvent(r);
     LogDebug("set write event");
@@ -302,10 +351,6 @@ void ReadIncome(aeEventLoop *el, int fd, void *privdata, int mask) {
 ERROR:
   if (c->type & CLIENT_TYPE_SERVER) {
     r->host->down = 1;
-    aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
-    aeDeleteFileEvent(el, c->fd, AE_READABLE);
-    close(c->fd);
-    c->fd = -1;
     PutClientInFreeList(r);
   } else {
     PutClientInFreeList(c);
@@ -349,10 +394,6 @@ void SendOutcome(aeEventLoop *el, int fd, void *privdata, int mask) {
     LogError("write to client error %s", strerror(errno));
     if (c->type & CLIENT_TYPE_SERVER) {
       c->remote->host->down = 1;
-      aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
-      aeDeleteFileEvent(el, c->fd, AE_READABLE);
-      close(c->fd);
-      c->fd = -1;
       PutClientInFreeList(c->remote);
     } else {
       PutClientInFreeList(c);
