@@ -287,10 +287,6 @@ static void PreConnectServer(Client *c) {
 
 static void PutClientInFreeList(Client *c) {
   if (c == NULL || c->fd < 0) return;
-  if (c->host == NULL || c->host->down) {
-    CloseClient(c);
-    return;
-  }
 
   aeDeleteFileEvent(el, c->fd, AE_READABLE);
   aeDeleteFileEvent(el, c->fd, AE_WRITABLE);
